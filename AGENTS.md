@@ -75,7 +75,8 @@ src/
 ├── app.rs         # egui App: layout, forms, action dispatch, worker threads
 ├── theme.rs       # Apple HIG visuals (light/dark) + fonts
 ├── elevate.rs     # IsUserAnAdmin / ShellExecuteW "runas" relaunch
-├── msg.rs         # Msg enum + Tx: worker -> UI channel
+├── monitor.rs     # pure diff/classification of adapter snapshots (unit-tested)
+├── msg.rs         # Msg/StatusMsg/MonitorCmd enums + channel helpers
 └── win/           # all OS access; nothing here may touch egui
     ├── mod.rs     # exec_method (WMI mid-level helper), return_code
     ├── adapters.rs# Win32_NetworkAdapterConfiguration enumeration (serde)
@@ -83,7 +84,8 @@ src/
     ├── ip.rs      # static IP, DHCP, release/renew, mask parsing
     ├── net.rs     # ICMP ping via IcmpSendEcho
     ├── reset.rs   # netsh / ipconfig fallbacks
-    └── scan.rs    # parallel ping sweep + GetIpNetTable (ARP)
+    ├── scan.rs    # parallel ping sweep + GetIpNetTable (ARP)
+    └── watch.rs   # opt-in live monitor: netwatcher events + WMI snapshots
 ```
 
 Long-running actions run on a `std::thread` and stream `Msg::Log` back over an
@@ -91,6 +93,13 @@ Long-running actions run on a `std::thread` and stream `Msg::Log` back over an
 `Send`, so each worker creates its own connection inside the thread. Do not
 share a connection across threads. `DnsApp::spawn` always sends `Msg::Done` last
 (that clears the busy flag).
+
+The Network status page has an opt-in **Live status** monitor
+(`win/watch.rs`). It is read-only: `netwatcher` reports OS interface/IP changes,
+a fallback poll (~15 s) covers DNS-only changes, and public IP is rechecked on a
+5-minute timer plus a debounced check after changes (max once per minute). The
+UI applies monitor observations only while not busy and never lets it start a
+repair. Diff/classification logic lives in `monitor.rs` (no OS access).
 
 ## 5. Non-obvious Windows/egui gotchas (hard-won)
 

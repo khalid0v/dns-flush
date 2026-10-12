@@ -47,7 +47,9 @@ offer a repair, but the user always initiates and confirms state changes.
 
 ### Keep out of V2
 
-- Silent/background repair, scheduled monitoring, or automatic scanning.
+- Silent/background repair, unattended or scheduled monitoring, or automatic
+  scanning. A user-enabled, read-only, in-app live status view of the local
+  machine is allowed.
 - Remote device management or scanning networks the operator does not
   administer.
 - Claims that the tool can repair hardware faults, identity/account access,
