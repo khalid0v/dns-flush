@@ -1,0 +1,4 @@
+# `rustflags` belongs here, not in Cargo.toml (Cargo ignores an unknown
+# `[build]` key in the manifest).
+[build]
+rustflags = ["-C", "target-cpu=native"]

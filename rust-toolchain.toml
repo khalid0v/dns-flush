@@ -1,0 +1,4 @@
+# The dev machine has no MSVC linker (link.exe), so pin the GNU toolchain.
+# `cargo +stable-x86_64-pc-windows-gnu ...` still works and is equivalent.
+[toolchain]
+channel = "stable-x86_64-pc-windows-gnu"

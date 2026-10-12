@@ -29,9 +29,11 @@ cargo +stable-x86_64-pc-windows-gnu fmt --check
 cargo +stable-x86_64-pc-windows-gnu test
 ```
 
-Plain `cargo build` fails with `linker link.exe not found`. The GNU target and
-toolchain are already installed. (Alternatively set a rustup override for this
-directory.) `Cargo.lock` is committed (binary crate).
+The repo pins the GNU toolchain in `rust-toolchain.toml`, so plain `cargo build`
+(and rust-analyzer) already use it; the `+stable-x86_64-pc-windows-gnu` prefix is
+optional but equivalent. Without that pin, plain `cargo build` fails with
+`linker link.exe not found`. The GNU target and toolchain are already installed.
+`Cargo.lock` is committed (binary crate).
 
 ## 3. Architecture
 

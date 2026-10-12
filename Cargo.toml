@@ -12,6 +12,3 @@ serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_NetworkManagement_Dns", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_UI_Shell"] }
 wmi = "0.18.4"
-
-[build]
-rustflags = ["-C", "target-cpu=native"]
