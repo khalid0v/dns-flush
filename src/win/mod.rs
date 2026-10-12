@@ -12,10 +12,6 @@ use wmi::Variant;
 
 pub use wmi::WMIConnection;
 
-/// Execute a WMI instance method with arbitrary input parameters.
-///
-/// The high-level `exec_instance_method` in the `wmi` crate cannot pass arrays,
-/// so we drive the mid-level API directly and put each parameter as a `Variant`.
 pub fn exec_method(
     con: &WMIConnection,
     class: &str,

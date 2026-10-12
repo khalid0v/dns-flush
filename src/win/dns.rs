@@ -29,9 +29,7 @@ fn flush_fn() -> &'static Option<FlushFn> {
     })
 }
 
-/// Flush the Windows DNS resolver cache (dnsapi!DnsFlushResolverCache).
-///
-/// The symbol is missing from MinGW's import library, so we load it at runtime.
+// Flush the Windows DNS resolver cache
 pub fn flush() -> bool {
     unsafe {
         match flush_fn() {
