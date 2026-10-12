@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use crate::win::adapters::AdapterInfo;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -13,6 +15,20 @@ pub enum Msg {
     Log(LogKind, String),
     Adapters(Vec<AdapterInfo>),
     Done,
+}
+
+/// Commands sent from the UI to the background status monitor.
+pub enum MonitorCmd {
+    /// Read the current state now, ignoring the fallback timer.
+    RefreshNow,
+    /// Enable or pause live updates.
+    SetEnabled(bool),
+}
+
+/// Read-only observations produced by the background status monitor.
+pub enum StatusMsg {
+    Adapters(Vec<AdapterInfo>),
+    PublicIp(Result<IpAddr, String>),
 }
 
 pub type Tx = std::sync::mpsc::Sender<Msg>;

@@ -1,12 +1,16 @@
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::{Duration, Instant};
 
 use eframe::egui;
 use ipnet::Ipv4Net;
 
-use crate::msg::{self, LogKind, Msg, Tx};
+use crate::monitor;
+use crate::msg::{self, LogKind, MonitorCmd, Msg, StatusMsg, Tx};
 use crate::theme;
-use crate::win::{AdapterInfo, WMIConnection, adapters, dns, ip, net, public_ip, reset, scan};
+use crate::win::{
+    AdapterInfo, WMIConnection, adapters, dns, ip, net, public_ip, reset, scan, watch,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -202,12 +206,25 @@ pub struct DnsApp {
     activity_visible: bool,
     dark: bool,
     theme_dirty: bool,
+
+    monitor_tx: Sender<MonitorCmd>,
+    monitor_rx: Receiver<StatusMsg>,
+    monitor_on: bool,
+    previous_adapters: Option<Vec<AdapterInfo>>,
+    previous_public_ip: Option<IpAddr>,
+    toast: Option<(String, Instant)>,
 }
+
+/// How long a "Network changed" toast stays on screen.
+const TOAST_LIFETIME: Duration = Duration::from_secs(6);
 
 impl DnsApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let dark = matches!(cc.egui_ctx.theme(), egui::Theme::Dark);
         theme::apply(&cc.egui_ctx, dark);
+
+        let repaint = cc.egui_ctx.clone();
+        let (monitor_tx, monitor_rx) = watch::start(move || repaint.request_repaint());
 
         let mut app = Self {
             adapters: Vec::new(),
@@ -241,6 +258,12 @@ impl DnsApp {
             activity_visible: false,
             dark,
             theme_dirty: false,
+            monitor_tx,
+            monitor_rx,
+            monitor_on: false,
+            previous_adapters: None,
+            previous_public_ip: None,
+            toast: None,
         };
         app.refresh_adapters();
         app.refresh_public_ip();
@@ -279,21 +302,16 @@ impl DnsApp {
         for message in messages {
             match message {
                 Msg::Log(kind, text) => self.push_log(kind, text),
-                Msg::Adapters(list) => {
-                    let previous = self.selected_index();
-                    self.adapters = list;
-                    self.selected = self
-                        .adapters
-                        .iter()
-                        .position(|a| a.index == previous)
-                        .unwrap_or(0);
-                }
+                Msg::Adapters(list) => self.apply_adapters(list),
                 Msg::Done => done = true,
             }
         }
         if done {
             self.busy = false;
             self.rx = None;
+            if self.monitor_on {
+                let _ = self.monitor_tx.send(MonitorCmd::RefreshNow);
+            }
         }
 
         let public_ip_result = self.public_ip_rx.as_ref().and_then(|rx| rx.try_recv().ok());
@@ -304,6 +322,7 @@ impl DnsApp {
                 Ok(address) => {
                     self.public_ip = Some(address);
                     self.public_ip_error = None;
+                    self.previous_public_ip = Some(address);
                 }
                 Err(error) => {
                     self.public_ip = None;
@@ -311,6 +330,80 @@ impl DnsApp {
                 }
             }
         }
+
+        let mut status = Vec::new();
+        while let Ok(message) = self.monitor_rx.try_recv() {
+            status.push(message);
+        }
+        for message in status {
+            if self.busy {
+                continue;
+            }
+            match message {
+                StatusMsg::Adapters(list) => self.apply_snapshot(list),
+                StatusMsg::PublicIp(result) => self.apply_public_ip(result),
+            }
+        }
+    }
+
+    /// Replace the adapter list while keeping the current selection when the
+    /// adapter is still present.
+    fn apply_adapters(&mut self, list: Vec<AdapterInfo>) {
+        let previous = self.selected_index();
+        self.adapters = list;
+        self.selected = self
+            .adapters
+            .iter()
+            .position(|a| a.index == previous)
+            .unwrap_or(0);
+    }
+
+    /// Apply a live monitor snapshot, logging and surfacing any changes. The
+    /// first snapshot after enabling establishes a silent baseline.
+    fn apply_snapshot(&mut self, list: Vec<AdapterInfo>) {
+        if let Some(previous) = &self.previous_adapters {
+            let changes = monitor::describe_changes(previous, &list);
+            if !changes.is_empty() {
+                for change in &changes {
+                    self.push_log(LogKind::Info, change.clone());
+                }
+                self.toast = Some((monitor::summarize(&changes), Instant::now()));
+            }
+        }
+        self.previous_adapters = Some(list.clone());
+        self.apply_adapters(list);
+    }
+
+    fn apply_public_ip(&mut self, result: Result<IpAddr, String>) {
+        self.public_ip_loading = false;
+        match result {
+            Ok(address) => {
+                if let Some(previous) = self.previous_public_ip
+                    && previous != address
+                {
+                    self.push_log(
+                        LogKind::Info,
+                        format!("Public IP changed: {previous} -> {address}"),
+                    );
+                }
+                self.previous_public_ip = Some(address);
+                self.public_ip = Some(address);
+                self.public_ip_error = None;
+            }
+            Err(error) => {
+                self.public_ip = None;
+                self.public_ip_error = Some(error);
+            }
+        }
+    }
+
+    fn set_monitor(&mut self, on: bool) {
+        if self.monitor_on == on {
+            return;
+        }
+        self.monitor_on = on;
+        self.previous_adapters = None;
+        let _ = self.monitor_tx.send(MonitorCmd::SetEnabled(on));
     }
 
     fn selected_index(&self) -> u32 {
@@ -350,8 +443,12 @@ impl DnsApp {
     }
 
     fn refresh_status(&mut self) {
-        self.refresh_adapters();
-        self.refresh_public_ip();
+        if self.monitor_on {
+            let _ = self.monitor_tx.send(MonitorCmd::RefreshNow);
+        } else {
+            self.refresh_adapters();
+            self.refresh_public_ip();
+        }
     }
 
     fn act_flush(&mut self) {
@@ -740,7 +837,7 @@ fn current_ip_label(ad: &AdapterInfo) -> String {
         .ip_addresses
         .iter()
         .filter_map(|address| address.parse::<IpAddr>().ok())
-        .filter(|address| is_usable_ip(*address))
+        .filter(|address| monitor::is_usable_ip(*address))
         .map(|address| address.to_string())
         .collect();
 
@@ -749,59 +846,6 @@ fn current_ip_label(ad: &AdapterInfo) -> String {
     } else {
         addresses.join(", ")
     }
-}
-
-fn is_usable_ip(address: IpAddr) -> bool {
-    match address {
-        IpAddr::V4(address) => {
-            !address.is_unspecified()
-                && !address.is_loopback()
-                && !address.is_multicast()
-                && !(address.octets()[0] == 169 && address.octets()[1] == 254)
-        }
-        IpAddr::V6(address) => {
-            !address.is_unspecified()
-                && !address.is_loopback()
-                && !address.is_multicast()
-                && !address.is_unicast_link_local()
-        }
-    }
-}
-
-fn vpn_status_label(adapters: &[AdapterInfo]) -> String {
-    const VPN_MARKERS: [&str; 15] = [
-        "vpn",
-        "wireguard",
-        "openvpn",
-        "wintun",
-        "tap-windows",
-        "fortinet",
-        "forticlient",
-        "globalprotect",
-        "anyconnect",
-        "tailscale",
-        "nordlynx",
-        "protonvpn",
-        "mullvad",
-        "zerotier",
-        "pulse secure",
-    ];
-
-    let active_vpn = adapters.iter().find(|adapter| {
-        let description = adapter.description.to_ascii_lowercase();
-        let looks_like_vpn = VPN_MARKERS
-            .iter()
-            .any(|marker| description.contains(marker));
-        looks_like_vpn
-            && adapter
-                .ip_addresses
-                .iter()
-                .any(|address| address.parse::<IpAddr>().is_ok_and(is_usable_ip))
-    });
-
-    active_vpn
-        .map(|adapter| format!("Detected ({})", adapter.description))
-        .unwrap_or_else(|| "No known VPN adapter detected".to_string())
 }
 
 impl eframe::App for DnsApp {
@@ -813,7 +857,7 @@ impl eframe::App for DnsApp {
             self.theme_dirty = false;
         }
         if self.busy || self.public_ip_loading {
-            ctx.request_repaint_after(std::time::Duration::from_millis(120));
+            ctx.request_repaint_after(Duration::from_millis(120));
         }
 
         egui::Panel::top("title").show(ui, |ui| {
@@ -976,10 +1020,39 @@ impl eframe::App for DnsApp {
                     }
                 });
         });
+
+        self.draw_toast(&ctx);
     }
 }
 
 impl DnsApp {
+    /// Small transient banner shown when the live monitor reports a change.
+    fn draw_toast(&mut self, ctx: &egui::Context) {
+        let Some((text, shown_at)) = self.toast.clone() else {
+            return;
+        };
+        let elapsed = shown_at.elapsed();
+        if elapsed >= TOAST_LIFETIME {
+            self.toast = None;
+            return;
+        }
+        ctx.request_repaint_after(TOAST_LIFETIME - elapsed);
+
+        egui::Area::new(egui::Id::new("status_toast"))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-16.0, 56.0))
+            .interactable(false)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .fill(theme::sidebar_fill(self.dark))
+                    .stroke(egui::Stroke::new(1.0, theme::accent(self.dark)))
+                    .corner_radius(egui::CornerRadius::same(10))
+                    .inner_margin(egui::Margin::symmetric(14, 10))
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new(&text).color(theme::text(self.dark)));
+                    });
+            });
+    }
+
     fn nav_icon_group(&mut self, ui: &mut egui::Ui, items: &[(&str, Tab)]) {
         for (label, tab) in items {
             self.nav_icon_button(ui, label, *tab);
@@ -1121,6 +1194,23 @@ impl DnsApp {
             "Current details for the selected network adapter.",
         );
 
+        ui.horizontal(|ui| {
+            let mut live = self.monitor_on;
+            let response = ui
+                .checkbox(&mut live, "Live status")
+                .on_hover_text("Refresh these cards automatically when the network changes.");
+            if response.changed() {
+                self.set_monitor(live);
+            }
+            let note = if self.monitor_on {
+                "Monitoring for changes"
+            } else {
+                "Manual refresh only"
+            };
+            ui.label(egui::RichText::new(note).color(theme::secondary_text(self.dark)));
+        });
+        ui.add_space(4.0);
+
         let no_adapter = "No active adapter selected";
         let (dns, ip_address) = self
             .adapters
@@ -1139,7 +1229,7 @@ impl DnsApp {
         } else {
             "Retrieved securely from ipify.org."
         };
-        let vpn_status = vpn_status_label(&self.adapters);
+        let vpn_status = monitor::vpn_status_label(&self.adapters);
 
         if ui.available_width() < 520.0 {
             self.status_card(ui, "Current DNS", &dns, "For the selected adapter");

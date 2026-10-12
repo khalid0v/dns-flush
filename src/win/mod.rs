@@ -5,6 +5,7 @@ pub mod net;
 pub mod public_ip;
 pub mod reset;
 pub mod scan;
+pub mod watch;
 
 pub use adapters::AdapterInfo;
 

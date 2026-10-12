@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use wmi::WMIConnection;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AdapterInfo {
     pub index: u32,
     pub interface_index: u32,

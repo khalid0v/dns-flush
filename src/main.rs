@@ -2,6 +2,7 @@
 
 mod app;
 mod elevate;
+mod monitor;
 mod msg;
 mod theme;
 mod win;
@@ -9,10 +10,8 @@ mod win;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
-    if !elevate::is_admin() {
-        if elevate::relaunch_elevated() {
-            return Ok(());
-        }
+    if !elevate::is_admin() && elevate::relaunch_elevated() {
+        return Ok(());
     }
 
     let options = eframe::NativeOptions {
