@@ -6,7 +6,7 @@ use ipnet::Ipv4Net;
 
 use crate::msg::{self, LogKind, Msg, Tx};
 use crate::theme;
-use crate::win::{AdapterInfo, WMIConnection, adapters, dns, ip, net, reset, scan};
+use crate::win::{AdapterInfo, WMIConnection, adapters, dns, ip, net, public_ip, reset, scan};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -14,22 +14,148 @@ enum Tab {
     Register,
     Reset,
     Check,
+    DnsLookup,
     SetDns,
     SetIp,
     Scan,
     Auto,
 }
 
-const TABS: [(&str, Tab); 8] = [
-    ("[1] Flush DNS", Tab::Flush),
-    ("[2] Register / renew", Tab::Register),
-    ("[3] Reset Winsock/TCP", Tab::Reset),
-    ("[4] Check DNS", Tab::Check),
-    ("[5] Set DNS servers", Tab::SetDns),
-    ("[6] Static IP / DHCP", Tab::SetIp),
-    ("[7] Scan subnet", Tab::Scan),
-    ("[8] AUTO setup", Tab::Auto),
-];
+/// Draws the compact, line-icon navigation rail without relying on a platform
+/// font or a raster asset. Every icon uses the same 1.8 point stroke.
+fn draw_nav_icon(painter: &egui::Painter, rect: egui::Rect, tab: Tab, color: egui::Color32) {
+    let stroke = egui::Stroke::new(1.8, color);
+    let center = rect.center();
+    let left = rect.left();
+    let right = rect.right();
+    let top = rect.top();
+    let bottom = rect.bottom();
+    let line = |from, to| painter.line_segment([from, to], stroke);
+    let dot = |at| painter.circle_filled(at, 1.8, color);
+
+    match tab {
+        Tab::Check => {
+            line(egui::pos2(left, center.y), egui::pos2(center.x, top));
+            line(egui::pos2(center.x, top), egui::pos2(right, center.y));
+            line(
+                egui::pos2(left + 2.0, center.y),
+                egui::pos2(left + 2.0, bottom),
+            );
+            line(
+                egui::pos2(right - 2.0, center.y),
+                egui::pos2(right - 2.0, bottom),
+            );
+            line(
+                egui::pos2(left + 2.0, bottom),
+                egui::pos2(right - 2.0, bottom),
+            );
+            line(
+                egui::pos2(center.x, bottom),
+                egui::pos2(center.x, center.y + 2.0),
+            );
+        }
+        Tab::DnsLookup => {
+            painter.circle_stroke(center - egui::vec2(2.0, 2.0), 5.8, stroke);
+            line(center + egui::vec2(2.0, 2.0), egui::pos2(right, bottom));
+        }
+        Tab::Scan => {
+            painter.circle_stroke(center, 8.0, stroke);
+            painter.circle_stroke(center, 3.0, stroke);
+            dot(center);
+            line(egui::pos2(center.x, top), egui::pos2(center.x, top + 3.0));
+            line(
+                egui::pos2(center.x, bottom - 3.0),
+                egui::pos2(center.x, bottom),
+            );
+        }
+        Tab::Flush => {
+            for offset in [-5.0, 0.0, 5.0] {
+                line(
+                    egui::pos2(left + 2.0, center.y + offset),
+                    egui::pos2(right - 3.0, center.y + offset),
+                );
+            }
+            line(
+                egui::pos2(right - 6.0, top + 1.0),
+                egui::pos2(right - 1.0, top + 6.0),
+            );
+        }
+        Tab::Register => {
+            painter.circle_stroke(center, 8.0, stroke);
+            line(
+                egui::pos2(right - 1.0, center.y - 2.0),
+                egui::pos2(right - 1.0, top + 1.0),
+            );
+            line(
+                egui::pos2(right - 1.0, top + 1.0),
+                egui::pos2(right - 5.0, top + 5.0),
+            );
+            line(
+                egui::pos2(left + 1.0, center.y + 2.0),
+                egui::pos2(left + 1.0, bottom - 1.0),
+            );
+            line(
+                egui::pos2(left + 1.0, bottom - 1.0),
+                egui::pos2(left + 5.0, bottom - 5.0),
+            );
+        }
+        Tab::Reset => {
+            painter.circle_stroke(center, 8.0, stroke);
+            line(
+                egui::pos2(center.x - 4.0, center.y - 4.0),
+                egui::pos2(center.x + 4.0, center.y + 4.0),
+            );
+            line(
+                egui::pos2(center.x + 4.0, center.y - 4.0),
+                egui::pos2(center.x - 4.0, center.y + 4.0),
+            );
+        }
+        Tab::SetDns => {
+            for offset in [-6.0, 0.0, 6.0] {
+                line(
+                    egui::pos2(left + 2.0, center.y + offset),
+                    egui::pos2(right - 2.0, center.y + offset),
+                );
+                dot(egui::pos2(left + 4.0, center.y + offset));
+            }
+        }
+        Tab::SetIp => {
+            for (x, y) in [
+                (left + 3.0, top + 4.0),
+                (right - 3.0, center.y),
+                (left + 3.0, bottom - 4.0),
+            ] {
+                painter.circle_stroke(egui::pos2(x, y), 2.2, stroke);
+            }
+            line(
+                egui::pos2(left + 5.0, top + 5.0),
+                egui::pos2(right - 5.0, center.y - 1.0),
+            );
+            line(
+                egui::pos2(right - 5.0, center.y + 1.0),
+                egui::pos2(left + 5.0, bottom - 5.0),
+            );
+        }
+        Tab::Auto => {
+            painter.circle_stroke(center, 5.0, stroke);
+            for (from, to) in [
+                (egui::pos2(center.x, top), egui::pos2(center.x, top + 4.0)),
+                (
+                    egui::pos2(center.x, bottom - 4.0),
+                    egui::pos2(center.x, bottom),
+                ),
+                (egui::pos2(left, center.y), egui::pos2(left + 4.0, center.y)),
+                (
+                    egui::pos2(right - 4.0, center.y),
+                    egui::pos2(right, center.y),
+                ),
+            ] {
+                line(from, to);
+            }
+            dot(center);
+        }
+    }
+}
 
 /// Recommended public DNS providers: display name + IPv4 servers.
 const DNS_PRESETS: [(&str, &[&str]); 4] = [
@@ -39,18 +165,14 @@ const DNS_PRESETS: [(&str, &[&str]); 4] = [
     ("Quad9", &["9.9.9.9", "149.112.112.112"]),
 ];
 
-/// A DNS change the user chose but has not applied yet.
-#[derive(Clone)]
-enum DnsPlan {
-    /// Let DHCP / Active Directory provide the servers.
-    Automatic,
-    Servers(Vec<String>),
-}
-
 pub struct DnsApp {
     adapters: Vec<AdapterInfo>,
     selected: usize,
     rx: Option<Receiver<Msg>>,
+    public_ip_rx: Option<Receiver<Result<IpAddr, String>>>,
+    public_ip: Option<IpAddr>,
+    public_ip_loading: bool,
+    public_ip_error: Option<String>,
     busy: bool,
     log: Vec<(LogKind, String)>,
     tab: Tab,
@@ -68,7 +190,6 @@ pub struct DnsApp {
     alt_ip: String,
 
     lookup: String,
-
     scan_cidr: String,
 
     primary_net: String,
@@ -78,8 +199,7 @@ pub struct DnsApp {
     auto_alt: bool,
 
     confirm_reset: bool,
-    pending_dns: Option<DnsPlan>,
-
+    activity_visible: bool,
     dark: bool,
     theme_dirty: bool,
 }
@@ -93,9 +213,13 @@ impl DnsApp {
             adapters: Vec::new(),
             selected: 0,
             rx: None,
+            public_ip_rx: None,
+            public_ip: None,
+            public_ip_loading: true,
+            public_ip_error: None,
             busy: false,
             log: Vec::new(),
-            tab: Tab::Flush,
+            tab: Tab::Check,
             dns_manual: false,
             dns1: String::new(),
             dns2: String::new(),
@@ -114,11 +238,12 @@ impl DnsApp {
             alt_start_host: 200,
             auto_alt: true,
             confirm_reset: false,
-            pending_dns: None,
+            activity_visible: false,
             dark,
             theme_dirty: false,
         };
         app.refresh_adapters();
+        app.refresh_public_ip();
         app
     }
 
@@ -136,6 +261,7 @@ impl DnsApp {
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         self.busy = true;
+        self.activity_visible = true;
         std::thread::spawn(move || {
             f(tx.clone());
             let _ = tx.send(Msg::Done);
@@ -169,6 +295,22 @@ impl DnsApp {
             self.busy = false;
             self.rx = None;
         }
+
+        let public_ip_result = self.public_ip_rx.as_ref().and_then(|rx| rx.try_recv().ok());
+        if let Some(result) = public_ip_result {
+            self.public_ip_rx = None;
+            self.public_ip_loading = false;
+            match result {
+                Ok(address) => {
+                    self.public_ip = Some(address);
+                    self.public_ip_error = None;
+                }
+                Err(error) => {
+                    self.public_ip = None;
+                    self.public_ip_error = Some(error);
+                }
+            }
+        }
     }
 
     fn selected_index(&self) -> u32 {
@@ -193,6 +335,23 @@ impl DnsApp {
                 Err(e) => msg::err(&tx, format!("Adapter enumeration failed: {e}")),
             }
         });
+    }
+
+    fn refresh_public_ip(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        self.public_ip_rx = Some(rx);
+        self.public_ip = None;
+        self.public_ip_error = None;
+        self.public_ip_loading = true;
+        std::thread::spawn(move || {
+            let result = public_ip::lookup().map_err(|error| error.to_string());
+            let _ = tx.send(result);
+        });
+    }
+
+    fn refresh_status(&mut self) {
+        self.refresh_adapters();
+        self.refresh_public_ip();
     }
 
     fn act_flush(&mut self) {
@@ -256,37 +415,43 @@ impl DnsApp {
     }
 
     fn act_check(&mut self) {
-        let Some(ad) = self.adapter() else {
+        let Some(adapter) = self.adapter() else {
             self.push_log(LogKind::Err, "No adapter selected.".into());
             return;
         };
-        let host = self.lookup.clone();
+        let host = self.lookup.trim().to_string();
+        if host.is_empty() {
+            self.push_log(LogKind::Err, "Enter a website name to check.".into());
+            return;
+        }
         self.spawn(move |tx| {
-            msg::head(&tx, format!("[4] DNS check for {}", ad.description));
-            if ad.dns_servers.is_empty() {
-                msg::info(&tx, "DNS is automatic (DHCP / AD) - no static servers set.");
-            } else {
-                msg::info(
-                    &tx,
-                    format!("Configured DNS: {}", ad.dns_servers.join(", ")),
-                );
-            }
+            msg::head(
+                &tx,
+                format!("DNS check for {host} on {}", adapter.description),
+            );
             match dns::resolve(&host) {
-                Ok(ips) => {
-                    msg::ok(&tx, format!("Resolved {host}:"));
-                    for ipaddr in &ips {
-                        msg::info(&tx, format!("  {ipaddr}"));
+                Ok(addresses) => {
+                    msg::ok(&tx, format!("{host} resolved to:"));
+                    for address in &addresses {
+                        msg::info(&tx, format!("  {address}"));
                     }
-                    for ipaddr in &ips {
-                        if let IpAddr::V4(v4) = ipaddr {
-                            match net::ping(*v4, 1000) {
-                                Some(ms) => msg::ok(&tx, format!("  ping {v4} -> {ms} ms")),
-                                None => msg::warn(&tx, format!("  ping {v4} -> no reply")),
+                    for address in &addresses {
+                        if let IpAddr::V4(address) = address {
+                            match net::ping(*address, 1000) {
+                                Some(milliseconds) => {
+                                    msg::ok(
+                                        &tx,
+                                        format!("  {address} replied in {milliseconds} ms"),
+                                    );
+                                }
+                                None => {
+                                    msg::warn(&tx, format!("  {address} did not reply to ping"))
+                                }
                             }
                         }
                     }
                 }
-                Err(e) => msg::err(&tx, format!("Failed to resolve {host}: {e}")),
+                Err(error) => msg::err(&tx, format!("Could not resolve {host}: {error}")),
             }
         });
     }
@@ -347,17 +512,6 @@ impl DnsApp {
                 Err(e) => msg::err(&tx, format!("Reset failed: {e}")),
             });
         });
-    }
-
-    fn act_apply_dns_plan(&mut self) {
-        match self.pending_dns.take() {
-            Some(DnsPlan::Automatic) => self.act_dns_auto(),
-            Some(DnsPlan::Servers(servers)) => {
-                let refs: Vec<&str> = servers.iter().map(String::as_str).collect();
-                self.act_set_dns_preset(&refs);
-            }
-            None => {}
-        }
     }
 
     fn act_set_ip(&mut self) {
@@ -581,6 +735,75 @@ fn current_dns_label(ad: &AdapterInfo) -> String {
     }
 }
 
+fn current_ip_label(ad: &AdapterInfo) -> String {
+    let addresses: Vec<String> = ad
+        .ip_addresses
+        .iter()
+        .filter_map(|address| address.parse::<IpAddr>().ok())
+        .filter(|address| is_usable_ip(*address))
+        .map(|address| address.to_string())
+        .collect();
+
+    if addresses.is_empty() {
+        "No active IP address".to_string()
+    } else {
+        addresses.join(", ")
+    }
+}
+
+fn is_usable_ip(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => {
+            !address.is_unspecified()
+                && !address.is_loopback()
+                && !address.is_multicast()
+                && !(address.octets()[0] == 169 && address.octets()[1] == 254)
+        }
+        IpAddr::V6(address) => {
+            !address.is_unspecified()
+                && !address.is_loopback()
+                && !address.is_multicast()
+                && !address.is_unicast_link_local()
+        }
+    }
+}
+
+fn vpn_status_label(adapters: &[AdapterInfo]) -> String {
+    const VPN_MARKERS: [&str; 15] = [
+        "vpn",
+        "wireguard",
+        "openvpn",
+        "wintun",
+        "tap-windows",
+        "fortinet",
+        "forticlient",
+        "globalprotect",
+        "anyconnect",
+        "tailscale",
+        "nordlynx",
+        "protonvpn",
+        "mullvad",
+        "zerotier",
+        "pulse secure",
+    ];
+
+    let active_vpn = adapters.iter().find(|adapter| {
+        let description = adapter.description.to_ascii_lowercase();
+        let looks_like_vpn = VPN_MARKERS
+            .iter()
+            .any(|marker| description.contains(marker));
+        looks_like_vpn
+            && adapter
+                .ip_addresses
+                .iter()
+                .any(|address| address.parse::<IpAddr>().is_ok_and(is_usable_ip))
+    });
+
+    active_vpn
+        .map(|adapter| format!("Detected ({})", adapter.description))
+        .unwrap_or_else(|| "No known VPN adapter detected".to_string())
+}
+
 impl eframe::App for DnsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll();
@@ -589,167 +812,250 @@ impl eframe::App for DnsApp {
             theme::apply(&ctx, self.dark);
             self.theme_dirty = false;
         }
-        if self.busy {
+        if self.busy || self.public_ip_loading {
             ctx.request_repaint_after(std::time::Duration::from_millis(120));
         }
 
         egui::Panel::top("title").show(ui, |ui| {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
-                    egui::RichText::new("DNS FLUSH")
+                    egui::RichText::new("Network support")
                         .color(theme::text(self.dark))
-                        .size(24.0)
+                        .size(22.0)
                         .strong(),
                 );
-                ui.label(
-                    egui::RichText::new("// network toolkit")
-                        .color(theme::secondary_text(self.dark)),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let label = if self.busy { "WORKING..." } else { "IDLE" };
-                    let color = if self.busy {
-                        theme::warning(self.dark)
-                    } else {
-                        theme::success(self.dark)
-                    };
-                    ui.label(egui::RichText::new(label).color(color));
-                    let mode = if self.dark { "Light mode" } else { "Dark mode" };
-                    if ui.button(mode).on_hover_text("Switch appearance").clicked() {
-                        self.dark = !self.dark;
-                        self.theme_dirty = true;
-                        ui.ctx().request_repaint();
-                    }
-                });
-            });
-            ui.add_space(4.0);
-        });
+                ui.add_space(8.0);
+                let label = if self.busy { "Working…" } else { "Ready" };
+                let color = if self.busy {
+                    theme::warning(self.dark)
+                } else {
+                    theme::success(self.dark)
+                };
+                ui.label(egui::RichText::new(label).color(color));
 
-        egui::Panel::bottom("log")
-            .resizable(true)
-            .default_size(240.0)
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("CONSOLE")
-                            .color(theme::secondary_text(self.dark))
-                            .strong(),
-                    );
-                    if ui.button("clear").clicked() {
-                        self.log.clear();
-                    }
-                });
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        for (kind, text) in &self.log {
-                            let color = match kind {
-                                LogKind::Info => theme::text(self.dark),
-                                LogKind::Ok => theme::success(self.dark),
-                                LogKind::Warn => theme::warning(self.dark),
-                                LogKind::Err => theme::destructive(self.dark),
-                                LogKind::Head => theme::accent(self.dark),
-                            };
-                            ui.label(egui::RichText::new(text).color(color).monospace());
-                        }
-                    });
+                let activity_label = if self.activity_visible {
+                    "Hide activity"
+                } else {
+                    "Show activity"
+                };
+                if ui.button(activity_label).clicked() {
+                    self.activity_visible = !self.activity_visible;
+                }
+
+                let mode = if self.dark { "Light mode" } else { "Dark mode" };
+                if ui.button(mode).on_hover_text("Switch appearance").clicked() {
+                    self.dark = !self.dark;
+                    self.theme_dirty = true;
+                    ui.ctx().request_repaint();
+                }
             });
 
-        let sidebar = theme::sidebar_fill(self.dark);
-        egui::Panel::left("actions")
-            .resizable(false)
-            .exact_size(230.0)
-            .frame(egui::Frame::new().fill(sidebar))
-            .show(ui, |ui| {
-                ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new("TARGET ADAPTER").color(theme::secondary_text(self.dark)),
-                );
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.label("Network adapter");
                 let current = self
                     .adapters
                     .get(self.selected)
                     .map(AdapterInfo::title)
-                    .unwrap_or_else(|| "(none found)".to_string());
+                    .unwrap_or_else(|| "No adapter found".to_string());
                 let mut chosen = self.selected;
+                let combo_width = (ui.available_width() - 112.0).max(120.0);
                 egui::ComboBox::from_id_salt("adapter")
                     .selected_text(current)
-                    .width(210.0)
+                    .width(combo_width)
                     .show_ui(ui, |ui| {
-                        for (i, a) in self.adapters.iter().enumerate() {
-                            ui.selectable_value(&mut chosen, i, a.title());
+                        for (i, adapter) in self.adapters.iter().enumerate() {
+                            ui.selectable_value(&mut chosen, i, adapter.title());
                         }
                     });
-                if chosen != self.selected {
-                    self.pending_dns = None;
-                }
                 self.selected = chosen;
-
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(!self.busy, egui::Button::new("refresh"))
-                        .clicked()
-                    {
-                        self.refresh_adapters();
-                    }
-                    if let Some(ad) = self.adapters.get(self.selected) {
-                        ui.label(
-                            egui::RichText::new(if ad.dhcp_enabled { "DHCP" } else { "STATIC" })
-                                .color(theme::secondary_text(self.dark))
-                                .small(),
-                        );
-                    }
-                });
-
-                ui.separator();
-                ui.label(egui::RichText::new("ACTIONS").color(theme::secondary_text(self.dark)));
-                for (label, tab) in TABS {
-                    let selected = self.tab == tab;
-                    if ui.selectable_label(selected, label).clicked() {
-                        self.tab = tab;
-                        self.confirm_reset = false;
-                        self.pending_dns = None;
-                    }
+                if ui
+                    .add_enabled(!self.busy, egui::Button::new("Refresh status"))
+                    .clicked()
+                {
+                    self.refresh_status();
                 }
+            });
+            ui.add_space(4.0);
+        });
+
+        if self.activity_visible {
+            egui::Panel::bottom("log")
+                .resizable(true)
+                .default_size(140.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Activity")
+                                .color(theme::secondary_text(self.dark))
+                                .strong(),
+                        );
+                        if ui.button("Clear activity").clicked() {
+                            self.log.clear();
+                        }
+                        if ui.button("Hide").clicked() {
+                            self.activity_visible = false;
+                        }
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .stick_to_bottom(true)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            for (kind, text) in &self.log {
+                                let color = match kind {
+                                    LogKind::Info => theme::text(self.dark),
+                                    LogKind::Ok => theme::success(self.dark),
+                                    LogKind::Warn => theme::warning(self.dark),
+                                    LogKind::Err => theme::destructive(self.dark),
+                                    LogKind::Head => theme::accent(self.dark),
+                                };
+                                ui.label(egui::RichText::new(text).color(color).monospace());
+                            }
+                        });
+                });
+        }
+
+        let sidebar = theme::sidebar_fill(self.dark);
+        egui::Panel::left("actions")
+            .resizable(false)
+            .exact_size(68.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(sidebar)
+                    .inner_margin(egui::Margin::symmetric(12, 8)),
+            )
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add_space(2.0);
+                        self.nav_icon_group(
+                            ui,
+                            &[
+                                ("Network status", Tab::Check),
+                                ("Check a website", Tab::DnsLookup),
+                                ("Find devices", Tab::Scan),
+                            ],
+                        );
+                        self.nav_icon_group(
+                            ui,
+                            &[
+                                ("Flush DNS cache", Tab::Flush),
+                                ("Renew connection", Tab::Register),
+                                ("Reset network", Tab::Reset),
+                            ],
+                        );
+                        self.nav_icon_group(
+                            ui,
+                            &[
+                                ("Choose DNS servers", Tab::SetDns),
+                                ("Set IP address", Tab::SetIp),
+                                ("Automatic setup", Tab::Auto),
+                            ],
+                        );
+                    });
             });
 
         egui::CentralPanel::default().show(ui, |ui| {
-            ui.add_space(6.0);
-            match self.tab {
-                Tab::Flush => self.ui_flush(ui),
-                Tab::Register => self.ui_register(ui),
-                Tab::Reset => self.ui_reset(ui),
-                Tab::Check => self.ui_check(ui),
-                Tab::SetDns => self.ui_set_dns(ui),
-                Tab::SetIp => self.ui_set_ip(ui),
-                Tab::Scan => self.ui_scan(ui),
-                Tab::Auto => self.ui_auto(ui),
-            }
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add_space(12.0);
+                    match self.tab {
+                        Tab::Flush => self.ui_flush(ui),
+                        Tab::Register => self.ui_register(ui),
+                        Tab::Reset => self.ui_reset(ui),
+                        Tab::Check => self.ui_check(ui),
+                        Tab::DnsLookup => self.ui_dns_lookup(ui),
+                        Tab::SetDns => self.ui_set_dns(ui),
+                        Tab::SetIp => self.ui_set_ip(ui),
+                        Tab::Scan => self.ui_scan(ui),
+                        Tab::Auto => self.ui_auto(ui),
+                    }
+                });
         });
     }
 }
 
 impl DnsApp {
+    fn nav_icon_group(&mut self, ui: &mut egui::Ui, items: &[(&str, Tab)]) {
+        for (label, tab) in items {
+            self.nav_icon_button(ui, label, *tab);
+        }
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(8.0);
+    }
+
+    fn nav_icon_button(&mut self, ui: &mut egui::Ui, label: &str, tab: Tab) {
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(44.0, 44.0), egui::Sense::click());
+        let response = response.on_hover_text(label);
+        let selected = self.tab == tab;
+        let fill = if selected {
+            theme::accent(self.dark)
+        } else if response.hovered() {
+            ui.visuals().widgets.hovered.weak_bg_fill
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(9), fill);
+
+        let color = if selected {
+            egui::Color32::WHITE
+        } else {
+            theme::secondary_text(self.dark)
+        };
+        draw_nav_icon(ui.painter(), rect.shrink(10.0), tab, color);
+
+        if response.clicked() {
+            self.tab = tab;
+            self.confirm_reset = false;
+        }
+    }
+
     fn heading(&self, ui: &mut egui::Ui, text: &str, sub: &str) {
         ui.label(
             egui::RichText::new(text)
                 .color(theme::text(self.dark))
-                .size(18.0)
+                .size(26.0)
                 .strong(),
         );
         ui.label(egui::RichText::new(sub).color(theme::secondary_text(self.dark)));
         ui.add_space(8.0);
     }
 
+    fn status_card(&self, ui: &mut egui::Ui, title: &str, value: &str, note: &str) {
+        egui::Frame::group(ui.style())
+            .inner_margin(egui::Margin::same(12))
+            .show(ui, |ui| {
+                ui.set_min_height(76.0);
+                ui.label(
+                    egui::RichText::new(title)
+                        .color(theme::secondary_text(self.dark))
+                        .strong(),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(value)
+                        .color(theme::text(self.dark))
+                        .size(18.0)
+                        .strong(),
+                );
+                ui.label(egui::RichText::new(note).color(theme::secondary_text(self.dark)));
+            });
+    }
+
     fn ui_flush(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[1] Flush DNS cache",
+            "Flush DNS cache",
             "Clear the Windows DNS resolver cache.",
         );
         if ui
-            .add_enabled(!self.busy, egui::Button::new("FLUSH"))
+            .add_enabled(!self.busy, egui::Button::new("Flush DNS cache"))
             .clicked()
         {
             self.act_flush();
@@ -759,11 +1065,11 @@ impl DnsApp {
     fn ui_register(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[2] Register DNS and renew IP",
-            "ipconfig /registerdns, then release + renew DHCP.",
+            "Renew your connection",
+            "Refresh the network address and register this PC with DNS.",
         );
         if ui
-            .add_enabled(!self.busy, egui::Button::new("RUN"))
+            .add_enabled(!self.busy, egui::Button::new("Renew connection"))
             .clicked()
         {
             self.act_register();
@@ -773,8 +1079,8 @@ impl DnsApp {
     fn ui_reset(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[3] Reset Winsock and TCP/IP",
-            "netsh winsock reset + netsh int ip reset. Restart required.",
+            "Reset network components",
+            "This may interrupt your connection. Restart the PC afterward.",
         );
         ui.label(
             egui::RichText::new("This changes system network state.")
@@ -782,7 +1088,7 @@ impl DnsApp {
         );
         if !self.confirm_reset {
             if ui
-                .add_enabled(!self.busy, egui::Button::new("RESET..."))
+                .add_enabled(!self.busy, egui::Button::new("Review reset"))
                 .clicked()
             {
                 self.confirm_reset = true;
@@ -793,7 +1099,7 @@ impl DnsApp {
                     .add_enabled(
                         !self.busy,
                         egui::Button::new(
-                            egui::RichText::new("CONFIRM RESET").color(egui::Color32::WHITE),
+                            egui::RichText::new("Confirm reset").color(egui::Color32::WHITE),
                         )
                         .fill(theme::destructive(self.dark)),
                     )
@@ -801,7 +1107,7 @@ impl DnsApp {
                 {
                     self.act_reset();
                 }
-                if ui.button("cancel").clicked() {
+                if ui.button("Cancel").clicked() {
                     self.confirm_reset = false;
                 }
             });
@@ -811,97 +1117,103 @@ impl DnsApp {
     fn ui_check(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[4] Check DNS servers & resolution",
-            "Show current servers, test resolution, and apply a recommended DNS.",
+            "Network status",
+            "Current details for the selected network adapter.",
         );
 
-        if let Some(ad) = self.adapters.get(self.selected) {
-            let text = current_dns_label(ad);
-            let color = if ad.dns_servers.is_empty() {
-                theme::secondary_text(self.dark)
-            } else {
-                theme::text(self.dark)
-            };
-            let dhcp = ad.dhcp_enabled;
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Current DNS:").strong());
-                ui.label(egui::RichText::new(text).color(color));
-                if dhcp {
-                    ui.label(egui::RichText::new("(DHCP)").color(theme::secondary_text(self.dark)));
-                }
+        let no_adapter = "No active adapter selected";
+        let (dns, ip_address) = self
+            .adapters
+            .get(self.selected)
+            .map(|adapter| (current_dns_label(adapter), current_ip_label(adapter)))
+            .unwrap_or_else(|| (no_adapter.to_string(), no_adapter.to_string()));
+        let public_ip = if self.public_ip_loading {
+            "Checking…".to_string()
+        } else {
+            self.public_ip
+                .map(|address| address.to_string())
+                .unwrap_or_else(|| "Unavailable".to_string())
+        };
+        let public_ip_note = if self.public_ip_error.is_some() {
+            "Could not reach the public IP service."
+        } else {
+            "Retrieved securely from ipify.org."
+        };
+        let vpn_status = vpn_status_label(&self.adapters);
+
+        if ui.available_width() < 520.0 {
+            self.status_card(ui, "Current DNS", &dns, "For the selected adapter");
+            ui.add_space(12.0);
+            self.status_card(
+                ui,
+                "Current IP address",
+                &ip_address,
+                "For the selected adapter",
+            );
+            ui.add_space(12.0);
+            self.status_card(ui, "Public IP address", &public_ip, public_ip_note);
+            ui.add_space(12.0);
+            self.status_card(
+                ui,
+                "VPN status",
+                &vpn_status,
+                "Based on active adapter names; some VPNs may not be recognized.",
+            );
+        } else {
+            ui.columns(2, |columns| {
+                self.status_card(
+                    &mut columns[0],
+                    "Current DNS",
+                    &dns,
+                    "For the selected adapter",
+                );
+                self.status_card(
+                    &mut columns[1],
+                    "Current IP address",
+                    &ip_address,
+                    "For the selected adapter",
+                );
+                columns[0].add_space(12.0);
+                columns[1].add_space(12.0);
+                self.status_card(
+                    &mut columns[0],
+                    "Public IP address",
+                    &public_ip,
+                    public_ip_note,
+                );
+                self.status_card(
+                    &mut columns[1],
+                    "VPN status",
+                    &vpn_status,
+                    "Based on active adapter names; some VPNs may not be recognized.",
+                );
             });
         }
+    }
 
+    fn ui_dns_lookup(&mut self, ui: &mut egui::Ui) {
+        self.heading(
+            ui,
+            "Check a website",
+            "See whether Windows can find the website and whether it replies to a ping.",
+        );
         ui.horizontal(|ui| {
-            ui.label("Host:");
+            ui.label("Website name");
             ui.text_edit_singleline(&mut self.lookup);
             if ui
-                .add_enabled(!self.busy, egui::Button::new("CHECK"))
+                .add_enabled(!self.busy, egui::Button::new("Check website"))
                 .clicked()
             {
                 self.act_check();
             }
         });
-
-        ui.add_space(10.0);
-        ui.label(egui::RichText::new("RECOMMENDED DNS").color(theme::secondary_text(self.dark)));
-        ui.horizontal_wrapped(|ui| {
-            for (name, servers) in DNS_PRESETS {
-                if ui
-                    .add_enabled(!self.busy, egui::Button::new(name))
-                    .on_hover_text(servers.join(" / "))
-                    .clicked()
-                {
-                    self.pending_dns = Some(DnsPlan::Servers(
-                        servers.iter().map(|s| (*s).to_string()).collect(),
-                    ));
-                }
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("AD / automatic"))
-                .on_hover_text("Use the DHCP / Active Directory-provided DNS servers")
-                .clicked()
-            {
-                self.pending_dns = Some(DnsPlan::Automatic);
-            }
-        });
-
-        if let Some(plan) = self.pending_dns.clone() {
-            ui.add_space(8.0);
-            let current = self
-                .adapters
-                .get(self.selected)
-                .map(current_dns_label)
-                .unwrap_or_else(|| "?".to_string());
-            let planned = match &plan {
-                DnsPlan::Automatic => "Automatic (DHCP / AD)".to_string(),
-                DnsPlan::Servers(servers) => servers.join(", "),
-            };
-            ui.label(
-                egui::RichText::new(format!(
-                    "Change DNS on this adapter:  {current}  ->  {planned}"
-                ))
-                .color(theme::warning(self.dark)),
-            );
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(!self.busy, egui::Button::new("APPLY"))
-                    .clicked()
-                {
-                    self.act_apply_dns_plan();
-                }
-                if ui.button("cancel").clicked() {
-                    self.pending_dns = None;
-                }
-            });
-        }
     }
 
     fn ui_set_dns(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[5] Set DNS servers",
-            "Apply a DNS provider to the selected adapter.",
+            "Choose DNS servers",
+            "Select a provider or enter the DNS addresses from your network administrator.",
         );
         ui.horizontal_wrapped(|ui| {
             for (name, servers) in DNS_PRESETS {
@@ -918,15 +1230,15 @@ impl DnsApp {
         ui.checkbox(&mut self.dns_manual, "Manual servers");
         ui.add_enabled_ui(self.dns_manual, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Preferred:");
+                ui.label("Preferred DNS");
                 ui.text_edit_singleline(&mut self.dns1);
             });
             ui.horizontal(|ui| {
-                ui.label("Alternate:");
+                ui.label("Alternate DNS");
                 ui.text_edit_singleline(&mut self.dns2);
             });
             if ui
-                .add_enabled(!self.busy, egui::Button::new("APPLY"))
+                .add_enabled(!self.busy, egui::Button::new("Apply DNS settings"))
                 .clicked()
             {
                 self.act_set_dns();
@@ -947,12 +1259,12 @@ impl DnsApp {
     fn ui_set_ip(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[6] Static IP / DHCP",
-            "Configure a static IPv4 address or switch back to DHCP.",
+            "Set an IP address",
+            "Use automatic settings or enter the address provided by your network administrator.",
         );
         ui.horizontal(|ui| {
-            ui.radio_value(&mut self.static_ip, false, "DHCP (automatic)");
-            ui.radio_value(&mut self.static_ip, true, "Static");
+            ui.radio_value(&mut self.static_ip, false, "Automatic (DHCP)");
+            ui.radio_value(&mut self.static_ip, true, "Enter an address");
         });
         ui.add_space(6.0);
         ui.add_enabled_ui(self.static_ip, |ui| {
@@ -960,16 +1272,16 @@ impl DnsApp {
                 ui.label("IP address");
                 ui.text_edit_singleline(&mut self.ip_addr);
                 ui.end_row();
-                ui.label("Mask / prefix");
+                ui.label("Subnet mask");
                 ui.text_edit_singleline(&mut self.mask);
                 ui.end_row();
                 ui.label("Gateway");
                 ui.text_edit_singleline(&mut self.gateway);
                 ui.end_row();
-                ui.label("DNS 1");
+                ui.label("Preferred DNS");
                 ui.text_edit_singleline(&mut self.ip_dns1);
                 ui.end_row();
-                ui.label("DNS 2");
+                ui.label("Alternate DNS");
                 ui.text_edit_singleline(&mut self.ip_dns2);
                 ui.end_row();
                 ui.label("Alternate IP");
@@ -979,7 +1291,7 @@ impl DnsApp {
         });
         ui.add_space(6.0);
         if ui
-            .add_enabled(!self.busy, egui::Button::new("APPLY"))
+            .add_enabled(!self.busy, egui::Button::new("Apply IP settings"))
             .clicked()
         {
             self.act_set_ip();
@@ -989,15 +1301,15 @@ impl DnsApp {
     fn ui_scan(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[7] Scan subnet",
-            "Ping sweep + ARP: list used IPs and recommend free ones.",
+            "Find devices on your network",
+            "Check a network you own or administer to see which addresses are in use.",
         );
         ui.horizontal(|ui| {
-            ui.label("CIDR:");
+            ui.label("Network range");
             ui.text_edit_singleline(&mut self.scan_cidr);
         });
         if ui
-            .add_enabled(!self.busy, egui::Button::new("SCAN"))
+            .add_enabled(!self.busy, egui::Button::new("Find devices"))
             .clicked()
         {
             self.act_scan();
@@ -1007,27 +1319,30 @@ impl DnsApp {
     fn ui_auto(&mut self, ui: &mut egui::Ui) {
         self.heading(
             ui,
-            "[8] AUTO setup",
-            "Find a free IP, set it static, optionally add an alternative network.",
+            "Automatic network setup",
+            "Find an available address and configure this adapter for that network.",
         );
         egui::Grid::new("autoform").num_columns(2).show(ui, |ui| {
-            ui.label("Primary net");
+            ui.label("Primary network");
             ui.text_edit_singleline(&mut self.primary_net);
             ui.end_row();
-            ui.label("Alternative net");
+            ui.label("Alternative network");
             ui.text_edit_singleline(&mut self.alt_net);
             ui.end_row();
-            ui.label("First host");
+            ui.label("Start checking at address");
             ui.add(egui::DragValue::new(&mut self.first_host).range(2..=254));
             ui.end_row();
-            ui.label("Alt start host");
+            ui.label("Alternative start address");
             ui.add(egui::DragValue::new(&mut self.alt_start_host).range(2..=254));
             ui.end_row();
         });
-        ui.checkbox(&mut self.auto_alt, "Also add an alternative-network IP");
+        ui.checkbox(
+            &mut self.auto_alt,
+            "Also add an address for the alternative network",
+        );
         ui.add_space(6.0);
         if ui
-            .add_enabled(!self.busy, egui::Button::new("RUN AUTO SETUP"))
+            .add_enabled(!self.busy, egui::Button::new("Start automatic setup"))
             .clicked()
         {
             self.act_auto();

@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod dns;
 pub mod ip;
 pub mod net;
+pub mod public_ip;
 pub mod reset;
 pub mod scan;
 

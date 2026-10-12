@@ -5,18 +5,50 @@ before changing anything.
 
 ## 1. Project overview
 
-`dns` is a **Windows-only** network-troubleshooting tool, shipped as a single
-Rust crate:
+`dns` is a **Windows-only IT support toolkit**, shipped as a single Rust crate.
+Its current feature set focuses on network troubleshooting; the product direction
+is to cover common Windows endpoint support tasks with guided diagnostics and
+carefully confirmed repairs:
 
 | Part                    | Status              | Role                                                                 |
 | ----------------------- | ------------------- | -------------------------------------------------------------------- |
-| Rust crate `dns`        | **Primary product** | `eframe`/`egui` desktop GUI with 8 network-troubleshooting actions  |
+| Rust crate `dns`        | **Primary product** | `eframe`/`egui` desktop GUI; currently 8 network-troubleshooting actions |
 
 The Rust app is an Apple HIG-inspired (macOS-style) GUI with light/dark modes.
-It self-elevates to Administrator at startup (UAC) because most actions change
-network state.
+It self-elevates to Administrator at startup (UAC) because some actions change
+system state. Keep read-only diagnostics usable without elevation where Windows
+allows it, and request elevation only when a repair requires it if the startup
+flow is later redesigned.
 
-## 2. Build: use the GNU toolchain (MSVC linker is missing)
+## 2. Product direction and implementation plan
+
+The goal is to make this a practical Windows endpoint support toolkit for
+frequent helpdesk work, not a general-purpose automatic repair system. Prefer
+small, understandable diagnostics and guided fixes. Report what was checked,
+what was found, and what a repair will change. Never claim a repair succeeded
+without checking its result.
+
+Build toward this in stages:
+
+1. **Read-only diagnostics and support report.** Add checks for internet and
+   gateway reachability, DNS resolution, DHCP, proxy and Wi-Fi state, plus
+   device details such as Windows version, hostname, uptime, memory, and free
+   storage. Present results in the UI and provide a copyable/exportable report.
+2. **Low-risk guided repairs.** Add focused actions for common issues, such as
+   restarting a selected Windows service or clearing safe temporary files.
+   Show the detected state and proposed action before running it; verify and
+   report the outcome.
+3. **Disruptive repairs with explicit review.** Keep changes that can interrupt
+   connectivity or user work (network resets, adapter/DNS/IP changes, service
+   changes with broad impact) behind a confirmation showing the current state
+   and planned change. Do not run repairs automatically in the background.
+
+Keep the scope centered on Windows PC support. The app cannot resolve every
+support issue: hardware faults, account/permission problems, and cloud-service
+incidents may need a technician or other system. Do not add features that imply
+the app can diagnose or fix those cases without evidence.
+
+## 3. Build: use the GNU toolchain (MSVC linker is missing)
 
 The dev machine has `rustc`/`cargo` 1.99 but **no `link.exe`**; only MinGW gcc
 (`C:\msys64\mingw64\bin`) is installed. The MSVC toolchain therefore cannot link
@@ -35,7 +67,7 @@ optional but equivalent. Without that pin, plain `cargo build` fails with
 `linker link.exe not found`. The GNU target and toolchain are already installed.
 `Cargo.lock` is committed (binary crate).
 
-## 3. Architecture
+## 4. Architecture
 
 ```
 src/
@@ -60,7 +92,7 @@ Long-running actions run on a `std::thread` and stream `Msg::Log` back over an
 share a connection across threads. `DnsApp::spawn` always sends `Msg::Done` last
 (that clears the busy flag).
 
-## 4. Non-obvious Windows/egui gotchas (hard-won)
+## 5. Non-obvious Windows/egui gotchas (hard-won)
 
 - **egui/eframe 0.36 API differs from older tutorials.** `eframe::App` requires
   `fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame)` — there is no
@@ -85,19 +117,21 @@ share a connection across threads. `DnsApp::spawn` always sends `Msg::Done` last
   `DefaultIPGateway`, `DNSServerSearchOrder`, `DHCPEnabled`, ...). Keep the
   explicit `#[serde(rename = "...")]` casing.
 
-## 5. Safety rules for agents
+## 6. Safety rules for agents
 
 Network changes can lock a machine out of the network.
 
 1. Never run, or tell the user to run, state-changing operations (static IP, DNS
-   change, adapter reset) without explicit approval. The GUI must keep the
-   confirm step for the reset action.
-2. Every state-changing action must show the current config, the planned change,
-   and ask for confirmation.
+   change, adapter reset, service restart, file cleanup) without explicit
+   approval.
+2. Every state-changing action must show the current state, the planned change,
+   and ask for confirmation immediately before applying it. Preserve the reset
+   confirmation and bring existing unconfirmed network changes into compliance
+   when those flows are next modified.
 3. Scan only networks the user owns or administers.
 4. Never commit real IPs, hostnames, or credentials.
 
-## 6. Definition of done
+## 7. Definition of done
 
 - `cargo +stable-x86_64-pc-windows-gnu fmt --check`, `clippy --all-targets --
   -D warnings`, and `test` pass.
@@ -105,3 +139,12 @@ Network changes can lock a machine out of the network.
   `theme.rs`/`msg.rs`.
 - Manually verified on Windows **as Administrator** for any change touching
   `win/` (do not claim it works otherwise).
+
+## 8. Supplemental Rust skills
+
+The upstream Rust Skills repository is included at `.rust-skills` as a Git
+submodule. Consult `.rust-skills/AGENTS.md` and relevant skill files under
+`.rust-skills/skills/` for supplemental Rust guidance, especially for ownership,
+error handling, concurrency, and unsafe Windows API code. This project's
+instructions take precedence where they define stricter requirements or
+project-specific behavior; do not replace this file with the upstream guide.
