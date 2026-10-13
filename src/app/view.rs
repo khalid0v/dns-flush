@@ -25,69 +25,90 @@ impl eframe::App for DnsApp {
             ctx.request_repaint_after(Duration::from_millis(120));
         }
 
-        egui::Panel::top("title").show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(
-                    egui::RichText::new("Network support")
-                        .color(theme::text(self.dark))
-                        .size(22.0)
-                        .strong(),
-                );
-                ui.add_space(8.0);
-                let label = if self.busy { "Working…" } else { "Ready" };
-                let color = if self.busy {
-                    theme::warning(self.dark)
-                } else {
-                    theme::success(self.dark)
-                };
-                ui.label(egui::RichText::new(label).color(color));
+        egui::Panel::top("title")
+            .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(12, 8)))
+            .show(ui, |ui| {
+                ui.add_space(2.0);
 
-                let activity_label = if self.activity_visible {
-                    "Hide activity"
-                } else {
-                    "Show activity"
-                };
-                if ui.button(activity_label).clicked() {
-                    self.activity_visible = !self.activity_visible;
-                }
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Network support")
+                            .color(theme::text(self.dark))
+                            .size(22.0)
+                            .strong(),
+                    );
+                    ui.add_space(10.0);
+                    let label = if self.busy { "Working…" } else { "Ready" };
+                    let color = if self.busy {
+                        theme::warning(self.dark)
+                    } else {
+                        theme::success(self.dark)
+                    };
+                    ui.label(egui::RichText::new(label).color(color));
 
-                let mode = if self.dark { "Light mode" } else { "Dark mode" };
-                if ui.button(mode).on_hover_text("Switch appearance").clicked() {
-                    self.dark = !self.dark;
-                    self.theme_dirty = true;
-                    ui.ctx().request_repaint();
-                }
-            });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("dev by ahmed khalid | ")
+                                    .color(theme::secondary_text(self.dark)),
+                            );
+                            ui.hyperlink_to(
+                                egui::RichText::new("github.com/khalid0v")
+                                    .color(theme::accent(self.dark)),
+                                "https://github.com/khalid0v",
+                            );
+                        });
+                        ui.add_space(12.0);
 
-            ui.add_space(2.0);
-            ui.horizontal(|ui| {
-                ui.label("Network adapter");
-                let current = self
-                    .adapters
-                    .get(self.selected)
-                    .map(AdapterInfo::title)
-                    .unwrap_or_else(|| "No adapter found".to_string());
-                let mut chosen = self.selected;
-                let combo_width = (ui.available_width() - 112.0).max(120.0);
-                egui::ComboBox::from_id_salt("adapter")
-                    .selected_text(current)
-                    .width(combo_width)
-                    .show_ui(ui, |ui| {
-                        for (i, adapter) in self.adapters.iter().enumerate() {
-                            ui.selectable_value(&mut chosen, i, adapter.title());
+                        let mode = if self.dark { "Light mode" } else { "Dark mode" };
+                        if ui.button(mode).on_hover_text("Switch appearance").clicked() {
+                            self.dark = !self.dark;
+                            self.theme_dirty = true;
+                            ui.ctx().request_repaint();
+                        }
+
+                        ui.add_space(6.0);
+                        let activity_label = if self.activity_visible {
+                            "Hide activity"
+                        } else {
+                            "Show activity"
+                        };
+                        if ui.button(activity_label).clicked() {
+                            self.activity_visible = !self.activity_visible;
                         }
                     });
-                self.selected = chosen;
-                if ui
-                    .add_enabled(!self.busy, egui::Button::new("Refresh status"))
-                    .clicked()
-                {
-                    self.refresh_status();
-                }
+                });
+
+                ui.add_space(4.0);
+
+                ui.horizontal(|ui| {
+                    ui.label("Network adapter");
+                    let current = self
+                        .adapters
+                        .get(self.selected)
+                        .map(AdapterInfo::title)
+                        .unwrap_or_else(|| "No adapter found".to_string());
+                    let mut chosen = self.selected;
+                    let combo_width = (ui.available_width() - 160.0).max(150.0);
+                    egui::ComboBox::from_id_salt("adapter")
+                        .selected_text(current)
+                        .width(combo_width)
+                        .show_ui(ui, |ui| {
+                            for (i, adapter) in self.adapters.iter().enumerate() {
+                                ui.selectable_value(&mut chosen, i, adapter.title());
+                            }
+                        });
+                    self.selected = chosen;
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("Refresh status"))
+                        .clicked()
+                    {
+                        self.refresh_status();
+                    }
+                });
+
+                ui.add_space(2.0);
             });
-            ui.add_space(4.0);
-        });
 
         if self.activity_visible {
             egui::Panel::bottom("log")
