@@ -121,8 +121,7 @@ impl DnsApp {
             previous_public_ip: None,
             toast: None,
         };
-        app.refresh_adapters();
-        app.refresh_public_ip();
+        app.set_monitor(true);
         app
     }
 

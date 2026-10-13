@@ -89,7 +89,7 @@ src/
     ├── public_ip.rs # public IP via WinHTTP (HTTPS, read-only)
     ├── reset.rs   # netsh / ipconfig fallbacks
     ├── scan.rs    # parallel ping sweep + GetIpNetTable (ARP)
-    └── watch.rs   # opt-in live monitor: netwatcher events + WMI snapshots
+    └── watch.rs   # live monitor (on by default): netwatcher events + WMI snapshots
 ```
 
 Long-running actions run on a `std::thread` and stream `Msg::Log` back over an
@@ -98,7 +98,7 @@ Long-running actions run on a `std::thread` and stream `Msg::Log` back over an
 share a connection across threads. `DnsApp::spawn` always sends `Msg::Done` last
 (that clears the busy flag).
 
-The Network status page has an opt-in **Live status** monitor
+The Network status page has a **Live status** monitor enabled by default
 (`win/watch.rs`). It is read-only: `netwatcher` reports OS interface/IP changes,
 a fallback poll (~15 s) covers DNS-only changes, and public IP is rechecked on a
 5-minute timer plus a debounced check after changes (max once per minute). The
