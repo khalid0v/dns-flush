@@ -12,9 +12,7 @@ use ipnet::Ipv4Net;
 
 use crate::monitor;
 use crate::msg::{self, LogKind, MonitorCmd, Msg, StatusMsg, Tx};
-use crate::win::{
-    AdapterInfo, WMIConnection, adapters, dns, ip, net, public_ip, reset, scan, watch,
-};
+use crate::win::{AdapterInfo, WMIConnection, adapters, dns, ip, public_ip, reset, scan, watch};
 
 mod nav;
 mod view;
@@ -56,7 +54,6 @@ pub struct DnsApp {
     ip_dns2: String,
     alt_ip: String,
 
-    lookup: String,
     scan_cidr: String,
 
     primary_net: String,
@@ -107,7 +104,6 @@ impl DnsApp {
             ip_dns1: String::new(),
             ip_dns2: String::new(),
             alt_ip: String::new(),
-            lookup: "google.com".to_string(),
             scan_cidr: "192.168.1.0/24".to_string(),
             primary_net: "192.168.1".to_string(),
             alt_net: "172.16.0".to_string(),
@@ -369,47 +365,6 @@ impl DnsApp {
                 Err(e) => msg::err(&tx, format!("ip reset failed: {e}")),
             }
             msg::ok(&tx, "Reset complete. Restart the computer to finish.");
-        });
-    }
-
-    fn act_check(&mut self) {
-        let Some(adapter) = self.adapter_or_report_missing() else {
-            return;
-        };
-        let host = self.lookup.trim().to_string();
-        if host.is_empty() {
-            self.push_log(LogKind::Err, "Enter a website name to check.".into());
-            return;
-        }
-        self.spawn(move |tx| {
-            msg::head(
-                &tx,
-                format!("DNS check for {host} on {}", adapter.description),
-            );
-            match dns::resolve(&host) {
-                Ok(addresses) => {
-                    msg::ok(&tx, format!("{host} resolved to:"));
-                    for address in &addresses {
-                        msg::info(&tx, format!("  {address}"));
-                    }
-                    for address in &addresses {
-                        if let IpAddr::V4(address) = address {
-                            match net::ping(*address, 1000) {
-                                Some(milliseconds) => {
-                                    msg::ok(
-                                        &tx,
-                                        format!("  {address} replied in {milliseconds} ms"),
-                                    );
-                                }
-                                None => {
-                                    msg::warn(&tx, format!("  {address} did not reply to ping"))
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(error) => msg::err(&tx, format!("Could not resolve {host}: {error}")),
-            }
         });
     }
 

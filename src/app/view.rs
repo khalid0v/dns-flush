@@ -156,7 +156,6 @@ impl eframe::App for DnsApp {
                         Tab::Register => self.ui_register(ui),
                         Tab::Reset => self.ui_reset(ui),
                         Tab::Check => self.ui_check(ui),
-                        Tab::DnsLookup => self.ui_dns_lookup(ui),
                         Tab::SetDns => self.ui_set_dns(ui),
                         Tab::SetIp => self.ui_set_ip(ui),
                         Tab::Scan => self.ui_scan(ui),
@@ -423,24 +422,6 @@ impl DnsApp {
                 );
             });
         }
-    }
-
-    fn ui_dns_lookup(&mut self, ui: &mut egui::Ui) {
-        self.heading(
-            ui,
-            "Check a website",
-            "See whether Windows can find the website and whether it replies to a ping.",
-        );
-        ui.horizontal(|ui| {
-            ui.label("Website name");
-            ui.text_edit_singleline(&mut self.lookup);
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("Check website"))
-                .clicked()
-            {
-                self.act_check();
-            }
-        });
     }
 
     fn ui_set_dns(&mut self, ui: &mut egui::Ui) {

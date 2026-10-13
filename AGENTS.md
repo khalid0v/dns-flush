@@ -12,7 +12,7 @@ carefully confirmed repairs:
 
 | Part                    | Status              | Role                                                                 |
 | ----------------------- | ------------------- | -------------------------------------------------------------------- |
-| Rust crate `dns`        | **Primary product** | `eframe`/`egui` desktop GUI; currently 8 network-troubleshooting actions |
+| Rust crate `dns`        | **Primary product** | `eframe`/`egui` desktop GUI; currently 7 network-troubleshooting actions |
 
 The Rust app is an Apple HIG-inspired (macOS-style) GUI with light/dark modes.
 It self-elevates to Administrator at startup (UAC) because some actions change

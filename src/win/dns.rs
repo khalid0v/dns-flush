@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::OnceLock;
 
 use anyhow::Result;
@@ -41,15 +40,6 @@ pub fn flush() -> bool {
             None => false,
         }
     }
-}
-
-/// Resolve a hostname through the OS resolver (getaddrinfo).
-pub fn resolve(host: &str) -> Result<Vec<IpAddr>> {
-    let addrs = (host, 0u16).to_socket_addrs()?;
-    let mut out: Vec<IpAddr> = addrs.map(|s| s.ip()).collect();
-    out.sort();
-    out.dedup();
-    Ok(out)
 }
 
 /// Set the static DNS server list on an adapter.

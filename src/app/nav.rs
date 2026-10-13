@@ -7,7 +7,6 @@ use eframe::egui;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Tab {
     Check,
-    DnsLookup,
     Scan,
     Flush,
     Register,
@@ -22,7 +21,6 @@ impl Tab {
     pub(super) fn label(self) -> &'static str {
         match self {
             Tab::Check => "Network status",
-            Tab::DnsLookup => "Check a website",
             Tab::Scan => "Find devices",
             Tab::Flush => "Flush DNS cache",
             Tab::Register => "Renew connection",
@@ -36,7 +34,7 @@ impl Tab {
 
 /// Sidebar sections, top to bottom. Each slice is separated by a rule.
 pub(super) const GROUPS: [&[Tab]; 3] = [
-    &[Tab::Check, Tab::DnsLookup, Tab::Scan],
+    &[Tab::Check, Tab::Scan],
     &[Tab::Flush, Tab::Register, Tab::Reset],
     &[Tab::SetDns, Tab::SetIp, Tab::Auto],
 ];
@@ -73,10 +71,6 @@ pub(super) fn draw_icon(painter: &egui::Painter, rect: egui::Rect, tab: Tab, col
                 egui::pos2(center.x, bottom),
                 egui::pos2(center.x, center.y + 2.0),
             );
-        }
-        Tab::DnsLookup => {
-            painter.circle_stroke(center - egui::vec2(2.0, 2.0), 5.8, stroke);
-            line(center + egui::vec2(2.0, 2.0), egui::pos2(right, bottom));
         }
         Tab::Scan => {
             painter.circle_stroke(center, 8.0, stroke);
