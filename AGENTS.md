@@ -67,6 +67,26 @@ optional but equivalent. Without that pin, plain `cargo build` fails with
 `linker link.exe not found`. The GNU target and toolchain are already installed.
 `Cargo.lock` is committed (binary crate).
 
+### Tauri builds without MSVC (verified 2026-10-13)
+
+A **Tauri v2** desktop app builds and runs on this machine with the same GNU
+toolchain — the MSVC Build Tools install (~2–4 GB, needs admin) is **not**
+required, which matters for the planned move from egui to a Tauri + React UI:
+
+- In the Tauri crate's `Cargo.toml`, set
+  `[lib] crate-type = ["staticlib", "rlib"]`. Keep `cdylib` **out** of that
+  list: including it makes MinGW's `ld` abort with
+  `error: export ordinal too large: <n>` because Tauri's DLL exports exceed the
+  PE export-ordinal limit.
+- `cdylib` is only needed for the mobile (iOS/Android) targets. The Windows
+  binary links the `rlib`/`staticlib` directly, so dropping it is safe here.
+- The `WebView2Loader` import library is resolved automatically from
+  `webview2-com-sys`'s build output, and the WebView2 runtime (154.x) is
+  already installed — no extra setup.
+
+Verified with a throwaway `react-ts` Tauri probe: `cargo build` exited 0 and
+the built exe opened a WebView2 window.
+
 ## 4. Architecture
 
 ```
