@@ -195,11 +195,8 @@ impl DnsApp {
     fn apply_adapters(&mut self, list: Vec<AdapterInfo>) {
         let previous = self.selected_index();
         self.adapters = list;
-        self.selected = self
-            .adapters
-            .iter()
-            .position(|a| a.index == previous)
-            .unwrap_or(0);
+        let keep = self.adapters.iter().position(|a| a.index == previous);
+        self.selected = keep.unwrap_or_else(|| preferred_adapter(&self.adapters));
     }
 
     /// Apply a live monitor snapshot, logging and surfacing any changes. The
@@ -643,6 +640,17 @@ fn report_status(tx: &Tx, operation: &str, success: &str, result: anyhow::Result
     }
 }
 
+/// Index of the adapter most likely to be the live connection: the first with
+/// a real (non-APIPA) address and a default gateway, else the first with a real
+/// address, else the first in the list.
+fn preferred_adapter(adapters: &[AdapterInfo]) -> usize {
+    adapters
+        .iter()
+        .position(|ad| ad.primary_ip().is_some() && !ad.gateways.is_empty())
+        .or_else(|| adapters.iter().position(|ad| ad.primary_ip().is_some()))
+        .unwrap_or(0)
+}
+
 /// Human-readable summary of an adapter's current DNS servers.
 fn current_dns_label(ad: &AdapterInfo) -> String {
     if ad.dns_servers.is_empty() {
@@ -685,6 +693,18 @@ mod tests {
             gateways: Vec::new(),
             dns_servers: dns.iter().map(|s| (*s).to_string()).collect(),
             dhcp_enabled,
+        }
+    }
+
+    fn adapter_with_gateways(description: &str, ips: &[&str], gateways: &[&str]) -> AdapterInfo {
+        AdapterInfo {
+            index: 1,
+            interface_index: 1,
+            description: description.to_string(),
+            ip_addresses: ips.iter().map(|s| (*s).to_string()).collect(),
+            gateways: gateways.iter().map(|s| (*s).to_string()).collect(),
+            dns_servers: Vec::new(),
+            dhcp_enabled: true,
         }
     }
 
@@ -745,5 +765,41 @@ mod tests {
                 (LogKind::Err, "SetDNS failed: boom".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn preferred_adapter_picks_one_with_ip_and_gateway() {
+        let adapters = vec![
+            adapter_with_gateways("VMnet1", &["192.168.126.1"], &[]),
+            adapter_with_gateways("Intel", &["172.16.0.200"], &["172.16.0.1"]),
+        ];
+        assert_eq!(preferred_adapter(&adapters), 1);
+    }
+
+    #[test]
+    fn preferred_adapter_falls_back_to_ip_only() {
+        let adapters = vec![
+            adapter_with_gateways("VMnet1", &["192.168.126.1"], &[]),
+            adapter_with_gateways("VPN", &["26.3.195.207"], &[]),
+        ];
+        assert_eq!(preferred_adapter(&adapters), 0);
+    }
+
+    #[test]
+    fn preferred_adapter_skips_apipa() {
+        let adapters = vec![
+            adapter_with_gateways("Broken", &["169.254.10.1"], &["169.254.10.1"]),
+            adapter_with_gateways("Intel", &["172.16.0.200"], &["172.16.0.1"]),
+        ];
+        assert_eq!(preferred_adapter(&adapters), 1);
+    }
+
+    #[test]
+    fn preferred_adapter_defaults_to_first_when_nothing_usable() {
+        let adapters = vec![
+            adapter_with_gateways("Broken", &["169.254.10.1"], &[]),
+            adapter_with_gateways("Empty", &[], &[]),
+        ];
+        assert_eq!(preferred_adapter(&adapters), 0);
     }
 }

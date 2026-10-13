@@ -105,6 +105,10 @@ a fallback poll (~15 s) covers DNS-only changes, and public IP is rechecked on a
 UI applies monitor observations only while not busy and never lets it start a
 repair. Diff/classification logic lives in `monitor.rs` (no OS access).
 
+On load the Network status page selects the adapter most likely to be live —
+the first with a real (non-APIPA) address and a default gateway — rather than
+the first in the WMI list; a manual choice is kept across refreshes.
+
 ## 5. Non-obvious Windows/egui gotchas (hard-won)
 
 - **egui/eframe 0.36 API differs from older tutorials.** `eframe::App` requires
