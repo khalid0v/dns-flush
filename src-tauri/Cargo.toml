@@ -1,0 +1,24 @@
+[package]
+name = "trubo"
+version = "0.1.0"
+description = "Windows IT support toolkit"
+authors = ["khalid0v"]
+edition = "2024"
+
+# Desktop-only: no `cdylib` here. Including it makes MinGW's `ld` abort with
+# `export ordinal too large` because Tauri's DLL export list exceeds the PE
+# limit (see AGENTS.md). The Windows binary links the rlib directly.
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+ipnet = "2"
+netwatcher = "0.8"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_NetworkManagement_Dns", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinHttp", "Win32_Networking_WinSock", "Win32_UI_Shell"] }
+wmi = "0.18"
