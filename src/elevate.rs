@@ -1,9 +1,7 @@
 use std::ffi::c_void;
 use windows_sys::Win32::UI::Shell::{IsUserAnAdmin, ShellExecuteW};
 
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
+use crate::win::to_wide;
 
 pub fn is_admin() -> bool {
     unsafe { IsUserAnAdmin() != 0 }
@@ -16,8 +14,8 @@ pub fn relaunch_elevated() -> bool {
         Ok(p) => p,
         Err(_) => return false,
     };
-    let verb = wide("runas");
-    let file = wide(&exe.to_string_lossy());
+    let verb = to_wide("runas");
+    let file = to_wide(&exe.to_string_lossy());
 
     let h: *mut c_void = unsafe {
         ShellExecuteW(

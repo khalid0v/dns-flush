@@ -3,7 +3,8 @@ use std::net::Ipv4Addr;
 use anyhow::Result;
 use wmi::{Variant, WMIConnection};
 
-use super::{adapters::AdapterInfo, exec_method, return_code};
+use super::adapters::{AdapterInfo, CLASS};
+use super::{exec_method, return_code};
 
 pub fn prefix_to_mask(prefix: u8) -> String {
     let bits: u32 = if prefix == 0 {
@@ -49,7 +50,7 @@ pub fn set_static(
     );
     let code = return_code(exec_method(
         con,
-        "Win32_NetworkAdapterConfiguration",
+        CLASS,
         &path,
         "EnableStatic",
         vec![("IPAddress", addresses), ("SubnetMask", masks)],
@@ -63,7 +64,7 @@ pub fn set_static(
         let metrics = Variant::Array(vec![Variant::UI2(1)]);
         let code = return_code(exec_method(
             con,
-            "Win32_NetworkAdapterConfiguration",
+            CLASS,
             &path,
             "SetGateways",
             vec![("DefaultIPGateway", gws), ("GatewayCostMetric", metrics)],
@@ -86,7 +87,7 @@ pub fn set_static(
 pub fn enable_dhcp(con: &WMIConnection, ad: &AdapterInfo) -> Result<u32> {
     let code = return_code(exec_method(
         con,
-        "Win32_NetworkAdapterConfiguration",
+        CLASS,
         &ad.wmi_path(),
         "EnableDHCP",
         vec![],
@@ -101,7 +102,7 @@ pub fn enable_dhcp(con: &WMIConnection, ad: &AdapterInfo) -> Result<u32> {
 pub fn release_lease(con: &WMIConnection, ad: &AdapterInfo) -> Result<u32> {
     Ok(return_code(exec_method(
         con,
-        "Win32_NetworkAdapterConfiguration",
+        CLASS,
         &ad.wmi_path(),
         "ReleaseDHCPLease",
         vec![],
@@ -111,9 +112,36 @@ pub fn release_lease(con: &WMIConnection, ad: &AdapterInfo) -> Result<u32> {
 pub fn renew_lease(con: &WMIConnection, ad: &AdapterInfo) -> Result<u32> {
     Ok(return_code(exec_method(
         con,
-        "Win32_NetworkAdapterConfiguration",
+        CLASS,
         &ad.wmi_path(),
         "RenewDHCPLease",
         vec![],
     )?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prefixes_map_to_dotted_masks() {
+        assert_eq!(prefix_to_mask(0), "0.0.0.0");
+        assert_eq!(prefix_to_mask(24), "255.255.255.0");
+        assert_eq!(prefix_to_mask(32), "255.255.255.255");
+    }
+
+    #[test]
+    fn parse_mask_accepts_prefix_lengths_and_dotted_masks() {
+        assert_eq!(parse_mask("24"), Some(24));
+        assert_eq!(parse_mask(" 16 "), Some(16));
+        assert_eq!(parse_mask("255.255.0.0"), Some(16));
+        assert_eq!(parse_mask("255.255.255.255"), Some(32));
+    }
+
+    #[test]
+    fn parse_mask_rejects_non_contiguous_or_out_of_range() {
+        assert_eq!(parse_mask("33"), None);
+        assert_eq!(parse_mask("255.0.255.0"), None);
+        assert_eq!(parse_mask("not-a-mask"), None);
+    }
 }

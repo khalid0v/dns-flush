@@ -14,6 +14,16 @@ use wmi::Variant;
 
 pub use wmi::WMIConnection;
 
+/// NUL-terminated UTF-16 buffer for Win32 wide-string (`*W`) APIs.
+pub fn to_wide(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Invoke a WMI instance method with arbitrary input parameters.
+///
+/// The high-level `WMIConnection::exec_instance_method` cannot pass array
+/// parameters, so callers that need `Variant::Array` (DNS servers, static
+/// addresses, gateways) must go through this mid-level path.
 pub fn exec_method(
     con: &WMIConnection,
     class: &str,

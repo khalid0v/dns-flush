@@ -72,17 +72,21 @@ optional but equivalent. Without that pin, plain `cargo build` fails with
 ```
 src/
 ├── main.rs        # elevation check + eframe entrypoint (no logic)
-├── app.rs         # egui App: layout, forms, action dispatch, worker threads
+├── app/           # egui App: state, actions, and rendering
+│   ├── mod.rs     # state, worker threads, action dispatch (repairs)
+│   ├── nav.rs     # sidebar pages: labels + line icons (pure)
+│   └── view.rs    # panel and page rendering
 ├── theme.rs       # Apple HIG visuals (light/dark) + fonts
 ├── elevate.rs     # IsUserAnAdmin / ShellExecuteW "runas" relaunch
 ├── monitor.rs     # pure diff/classification of adapter snapshots (unit-tested)
 ├── msg.rs         # Msg/StatusMsg/MonitorCmd enums + channel helpers
 └── win/           # all OS access; nothing here may touch egui
-    ├── mod.rs     # exec_method (WMI mid-level helper), return_code
+    ├── mod.rs     # to_wide, exec_method (WMI mid-level helper), return_code
     ├── adapters.rs# Win32_NetworkAdapterConfiguration enumeration (serde)
     ├── dns.rs     # flush (runtime dnsapi lookup), resolve, set/reset DNS
     ├── ip.rs      # static IP, DHCP, release/renew, mask parsing
     ├── net.rs     # ICMP ping via IcmpSendEcho
+    ├── public_ip.rs # public IP via WinHTTP (HTTPS, read-only)
     ├── reset.rs   # netsh / ipconfig fallbacks
     ├── scan.rs    # parallel ping sweep + GetIpNetTable (ARP)
     └── watch.rs   # opt-in live monitor: netwatcher events + WMI snapshots
@@ -157,3 +161,11 @@ submodule. Consult `.rust-skills/AGENTS.md` and relevant skill files under
 error handling, concurrency, and unsafe Windows API code. This project's
 instructions take precedence where they define stricter requirements or
 project-specific behavior; do not replace this file with the upstream guide.
+
+The `clean-code` skill (from `ciembor/agent-rules-books`) is vendored at
+`.opencode/skills/clean-code/` and recorded in `skills-lock.json`. OpenCode
+advertises it automatically. Apply `clean-code.mini.md` during everyday
+implementation and review, and use `clean-code.md` as the deeper reference.
+Treat it as guidance, not licence to refactor unrelated code: keep cleanup
+proportional and behaviour-preserving, and the rules in this file take
+precedence where they are stricter.

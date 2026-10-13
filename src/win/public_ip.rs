@@ -11,6 +11,8 @@ use windows_sys::Win32::Networking::WinHttp::{
     WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
 };
 
+use super::to_wide;
+
 const HOST: &str = "api64.ipify.org";
 const MAX_RESPONSE_BYTES: usize = 64;
 
@@ -38,15 +40,11 @@ impl Drop for WinHttpHandle {
     }
 }
 
-fn wide(value: &str) -> Vec<u16> {
-    value.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 pub fn lookup() -> Result<IpAddr> {
-    let agent = wide("NetworkSupport/0.1");
-    let host = wide(HOST);
-    let method = wide("GET");
-    let path = wide("/");
+    let agent = to_wide("NetworkSupport/0.1");
+    let host = to_wide(HOST);
+    let method = to_wide("GET");
+    let path = to_wide("/");
 
     let session = WinHttpHandle::new(
         unsafe {

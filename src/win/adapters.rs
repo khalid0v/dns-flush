@@ -2,6 +2,9 @@ use anyhow::Result;
 use serde::Deserialize;
 use wmi::WMIConnection;
 
+/// WMI class that exposes per-adapter IP and DNS configuration.
+pub const CLASS: &str = "Win32_NetworkAdapterConfiguration";
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AdapterInfo {
     pub index: u32,

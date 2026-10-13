@@ -90,3 +90,27 @@ pub fn scan_net(interface_index: u32, net: Ipv4Net, timeout_ms: u32) -> HashMap<
     }
     used
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_host_cidr_to_network() {
+        let net = parse_cidr("192.168.1.37/24").expect("valid CIDR");
+        assert_eq!(net.network().to_string(), "192.168.1.0");
+        assert_eq!(net.prefix_len(), 24);
+    }
+
+    #[test]
+    fn accepts_network_address_without_host_bits() {
+        let net = parse_cidr("10.0.0.0/8").expect("valid CIDR");
+        assert_eq!(net.network().to_string(), "10.0.0.0");
+    }
+
+    #[test]
+    fn rejects_malformed_cidr() {
+        assert!(parse_cidr("192.168.1.0").is_none());
+        assert!(parse_cidr("nonsense").is_none());
+    }
+}

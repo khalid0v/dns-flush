@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 use anyhow::Result;
 use wmi::{Variant, WMIConnection};
 
-use super::{adapters::AdapterInfo, exec_method, return_code};
+use super::adapters::{AdapterInfo, CLASS};
+use super::{exec_method, return_code};
 
 unsafe extern "system" {
     fn LoadLibraryA(name: *const u8) -> *mut c_void;
@@ -29,7 +30,10 @@ fn flush_fn() -> &'static Option<FlushFn> {
     })
 }
 
-// Flush the Windows DNS resolver cache
+/// Flush the Windows DNS resolver cache (`dnsapi!DnsFlushResolverCache`).
+///
+/// The symbol is missing from MinGW's import library, so it is resolved at
+/// runtime through `LoadLibraryA`/`GetProcAddress`.
 pub fn flush() -> bool {
     unsafe {
         match flush_fn() {
@@ -53,7 +57,7 @@ pub fn set_servers(con: &WMIConnection, ad: &AdapterInfo, servers: &[String]) ->
     let list = Variant::Array(servers.iter().cloned().map(Variant::String).collect());
     let out = exec_method(
         con,
-        "Win32_NetworkAdapterConfiguration",
+        CLASS,
         &ad.wmi_path(),
         "SetDNSServerSearchOrder",
         vec![("DNSServerSearchOrder", list)],
@@ -65,7 +69,7 @@ pub fn set_servers(con: &WMIConnection, ad: &AdapterInfo, servers: &[String]) ->
 pub fn reset_servers(con: &WMIConnection, ad: &AdapterInfo) -> Result<u32> {
     let out = exec_method(
         con,
-        "Win32_NetworkAdapterConfiguration",
+        CLASS,
         &ad.wmi_path(),
         "SetDNSServerSearchOrder",
         vec![("DNSServerSearchOrder", Variant::Array(vec![]))],
