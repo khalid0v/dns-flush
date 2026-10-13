@@ -1,4 +1,7 @@
+use std::net::Ipv4Addr;
+
 use anyhow::Result;
+use ipnet::Ipv4Net;
 use serde::Deserialize;
 use wmi::WMIConnection;
 
@@ -11,6 +14,7 @@ pub struct AdapterInfo {
     pub interface_index: u32,
     pub description: String,
     pub ip_addresses: Vec<String>,
+    pub ip_subnets: Vec<String>,
     pub gateways: Vec<String>,
     pub dns_servers: Vec<String>,
     pub dhcp_enabled: bool,
@@ -32,6 +36,29 @@ impl AdapterInfo {
             .find(|a| !a.starts_with("169.254."))
     }
 
+    /// Subnet mask configured for `ip`, if this adapter has one.
+    pub fn subnet_for(&self, ip: &str) -> Option<&str> {
+        self.ip_addresses
+            .iter()
+            .position(|a| a == ip)
+            .and_then(|i| self.ip_subnets.get(i))
+            .map(|s| s.as_str())
+    }
+
+    /// CIDR of the primary (non-APIPA) address, e.g. `172.16.0.0/24`.
+    pub fn primary_cidr(&self) -> Option<Ipv4Net> {
+        let ip = self.primary_ip()?;
+        let prefix = crate::win::ip::parse_mask(self.subnet_for(ip)?)?;
+        let ip: Ipv4Addr = ip.parse().ok()?;
+        let bits = u32::from(ip);
+        let network = if prefix == 0 {
+            0
+        } else {
+            bits & (u32::MAX << (32 - prefix))
+        };
+        Ipv4Net::new(Ipv4Addr::from(network), prefix).ok()
+    }
+
     /// WMI object path used to invoke instance methods on this adapter.
     pub fn wmi_path(&self) -> String {
         format!("Win32_NetworkAdapterConfiguration.Index={}", self.index)
@@ -47,6 +74,7 @@ struct RawAdapter {
     Description: Option<String>,
     IPEnabled: Option<bool>,
     IPAddress: Option<Vec<String>>,
+    IPSubnet: Option<Vec<String>>,
     DefaultIPGateway: Option<Vec<String>>,
     DNSServerSearchOrder: Option<Vec<String>>,
     DHCPEnabled: Option<bool>,
@@ -66,6 +94,7 @@ pub fn list(con: &WMIConnection) -> Result<Vec<AdapterInfo>> {
             interface_index: a.InterfaceIndex.unwrap_or(a.Index),
             description: a.Description.unwrap_or_else(|| "Unknown adapter".into()),
             ip_addresses: a.IPAddress.unwrap_or_default(),
+            ip_subnets: a.IPSubnet.unwrap_or_default(),
             gateways: a.DefaultIPGateway.unwrap_or_default(),
             dns_servers: a.DNSServerSearchOrder.unwrap_or_default(),
             dhcp_enabled: a.DHCPEnabled.unwrap_or(false),

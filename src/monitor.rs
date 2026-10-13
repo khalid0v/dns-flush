@@ -197,6 +197,7 @@ mod tests {
             interface_index: index,
             description: description.to_string(),
             ip_addresses: ips.iter().map(|s| (*s).to_string()).collect(),
+            ip_subnets: Vec::new(),
             gateways: Vec::new(),
             dns_servers: dns.iter().map(|s| (*s).to_string()).collect(),
             dhcp_enabled: true,

@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ipnet::Ipv4Net;
 use windows_sys::Win32::NetworkManagement::IpHelper::{GetIpNetTable, MIB_IPNETTABLE};
 
+use super::adapters::AdapterInfo;
 use super::net::{ping, u32_to_ip};
+use crate::msg::{ScanDevice, ScanResult};
 
 pub fn parse_cidr(text: &str) -> Option<Ipv4Net> {
     let net: Ipv4Net = text.trim().parse().ok()?;
@@ -89,6 +91,41 @@ pub fn scan_net(interface_index: u32, net: Ipv4Net, timeout_ms: u32) -> HashMap<
         }
     }
     used
+}
+
+/// Scan `net` and return the devices in use plus the free host addresses.
+pub fn scan_result(interface_index: u32, net: Ipv4Net, ad: &AdapterInfo) -> ScanResult {
+    let used_map = scan_net(interface_index, net, 700);
+    let hosts: Vec<Ipv4Addr> = net.hosts().collect();
+    let local = ad.primary_ip().and_then(|s| s.parse::<Ipv4Addr>().ok());
+
+    let mut used: Vec<ScanDevice> = used_map
+        .iter()
+        .map(|(ip, mac)| ScanDevice {
+            ip: *ip,
+            mac: mac.clone(),
+            note: if Some(*ip) == local {
+                "this PC".to_string()
+            } else if ad.gateways.iter().any(|g| g == &ip.to_string()) {
+                "gateway".to_string()
+            } else {
+                String::new()
+            },
+        })
+        .collect();
+    used.sort_by_key(|d| u32::from(d.ip));
+
+    let free: Vec<Ipv4Addr> = hosts
+        .iter()
+        .copied()
+        .filter(|h| !used_map.contains_key(h))
+        .collect();
+
+    ScanResult {
+        network: net.to_string(),
+        used,
+        free,
+    }
 }
 
 #[cfg(test)]

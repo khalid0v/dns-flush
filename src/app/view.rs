@@ -6,7 +6,7 @@ use std::time::Duration;
 use eframe::egui;
 
 use crate::monitor;
-use crate::msg::LogKind;
+use crate::msg::{LogKind, ScanResult};
 use crate::theme;
 use crate::win::AdapterInfo;
 
@@ -99,6 +99,7 @@ impl eframe::App for DnsApp {
                             }
                         });
                     self.selected = chosen;
+                    self.sync_scan_range();
                     if ui
                         .add_enabled(!self.busy, egui::Button::new("Refresh status"))
                         .clicked()
@@ -540,16 +541,108 @@ impl DnsApp {
             "Find devices on your network",
             "Check a network you own or administer to see which addresses are in use.",
         );
+
+        // This PC's own address and how it was configured.
+        if let Some(ad) = self.adapter() {
+            let ip = ad
+                .primary_ip()
+                .cloned()
+                .unwrap_or_else(|| "no IP".to_string());
+            let subnet = ad
+                .subnet_for(&ip)
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            let mode = if ad.dhcp_enabled { "DHCP" } else { "Static" };
+            ui.label(
+                egui::RichText::new(format!(
+                    "This PC: {ip}  ·  subnet {subnet}  ·  {mode}  ·  {}",
+                    ad.description
+                ))
+                .color(theme::secondary_text(self.dark)),
+            );
+            ui.add_space(4.0);
+        }
+
         ui.horizontal(|ui| {
             ui.label("Network range");
             ui.text_edit_singleline(&mut self.scan_cidr);
+            if ui
+                .add_enabled(!self.busy, egui::Button::new("Find devices"))
+                .clicked()
+            {
+                self.act_scan();
+            }
         });
-        if ui
-            .add_enabled(!self.busy, egui::Button::new("Find devices"))
-            .clicked()
-        {
-            self.act_scan();
+
+        let Some(result) = self.scan_result.as_ref() else {
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new("Choose a range and press Find devices to see what is in use.")
+                    .color(theme::secondary_text(self.dark)),
+            );
+            return;
+        };
+
+        ui.add_space(10.0);
+        ui.label(
+            egui::RichText::new(format!(
+                "{} of {} addresses in use in {}",
+                result.used.len(),
+                result.used.len() + result.free.len(),
+                result.network
+            ))
+            .color(theme::text(self.dark))
+            .strong(),
+        );
+        ui.add_space(6.0);
+        self.scan_table(ui, result);
+    }
+
+    /// Scrollable table of every host: devices in use first, then free addresses.
+    fn scan_table(&self, ui: &mut egui::Ui, result: &ScanResult) {
+        let mut rows: Vec<(String, String, String, bool)> = Vec::new();
+        for device in &result.used {
+            rows.push((
+                device.ip.to_string(),
+                "In use".to_string(),
+                format!("{} {}", device.mac, device.note).trim().to_string(),
+                false,
+            ));
         }
+        for ip in &result.free {
+            rows.push((ip.to_string(), "Free".to_string(), String::new(), true));
+        }
+
+        egui::ScrollArea::vertical()
+            .max_height(240.0)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                egui::Grid::new("scan_table")
+                    .num_columns(3)
+                    .spacing(egui::vec2(10.0, 4.0))
+                    .show(ui, |ui| {
+                        for title in ["IP address", "Status", "MAC / note"] {
+                            ui.label(
+                                egui::RichText::new(title)
+                                    .color(theme::text(self.dark))
+                                    .strong(),
+                            );
+                        }
+                        ui.end_row();
+
+                        for (ip, status, detail, is_free) in &rows {
+                            ui.label(ip);
+                            let color = if *is_free {
+                                theme::success(self.dark)
+                            } else {
+                                theme::warning(self.dark)
+                            };
+                            ui.label(egui::RichText::new(status).color(color).strong());
+                            ui.label(detail);
+                            ui.end_row();
+                        }
+                    });
+            });
     }
 
     fn ui_auto(&mut self, ui: &mut egui::Ui) {

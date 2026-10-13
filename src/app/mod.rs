@@ -8,10 +8,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use ipnet::Ipv4Net;
 
 use crate::monitor;
-use crate::msg::{self, LogKind, MonitorCmd, Msg, StatusMsg, Tx};
+use crate::msg::{self, LogKind, MonitorCmd, Msg, ScanResult, StatusMsg, Tx};
 use crate::win::{AdapterInfo, WMIConnection, adapters, dns, ip, public_ip, reset, scan, watch};
 
 mod nav;
@@ -55,6 +54,7 @@ pub struct DnsApp {
     alt_ip: String,
 
     scan_cidr: String,
+    scan_result: Option<ScanResult>,
 
     primary_net: String,
     alt_net: String,
@@ -105,6 +105,7 @@ impl DnsApp {
             ip_dns2: String::new(),
             alt_ip: String::new(),
             scan_cidr: "192.168.1.0/24".to_string(),
+            scan_result: None,
             primary_net: "192.168.1".to_string(),
             alt_net: "172.16.0".to_string(),
             first_host: 11,
@@ -158,6 +159,7 @@ impl DnsApp {
             match message {
                 Msg::Log(kind, text) => self.push_log(kind, text),
                 Msg::Adapters(list) => self.apply_adapters(list),
+                Msg::ScanResult(result) => self.scan_result = Some(result),
                 Msg::Done => done = true,
             }
         }
@@ -491,6 +493,17 @@ impl DnsApp {
         });
     }
 
+    /// Point the scan range at the selected adapter's own subnet and drop any
+    /// stale result from a previous network.
+    fn sync_scan_range(&mut self) {
+        if let Some(ad) = self.adapter()
+            && let Some(cidr) = ad.primary_cidr()
+        {
+            self.scan_cidr = cidr.to_string();
+        }
+        self.scan_result = None;
+    }
+
     fn act_scan(&mut self) {
         let Some(ad) = self.adapter_or_report_missing() else {
             return;
@@ -499,9 +512,11 @@ impl DnsApp {
             self.push_log(LogKind::Err, format!("Invalid CIDR: {}", self.scan_cidr));
             return;
         };
+        self.scan_result = None;
         self.spawn(move |tx| {
             msg::head(&tx, format!("[7] Scan {}", cidr));
-            report_scan(&tx, &ad, cidr);
+            let result = scan::scan_result(ad.interface_index, cidr, &ad);
+            let _ = tx.send(Msg::ScanResult(result));
         });
     }
 
@@ -572,45 +587,6 @@ impl DnsApp {
                 );
             });
         });
-    }
-}
-
-fn report_scan(tx: &Tx, ad: &AdapterInfo, net: Ipv4Net) {
-    let used = scan::scan_net(ad.interface_index, net, 700);
-    let hosts: Vec<Ipv4Addr> = net.hosts().collect();
-    let local = ad.primary_ip().and_then(|s| s.parse::<Ipv4Addr>().ok());
-
-    let mut used_sorted: Vec<_> = used.iter().collect();
-    used_sorted.sort_by_key(|(ip, _)| u32::from(**ip));
-    msg::info(tx, format!("USED ({}):", used.len()));
-    for (ip, mac) in used_sorted {
-        let mut note = String::new();
-        if Some(*ip) == local {
-            note = "  <- this PC".into();
-        } else if ad.gateways.iter().any(|g| g == &ip.to_string()) {
-            note = "  <- gateway".into();
-        }
-        msg::info(tx, format!("  {ip:<15} {mac}{note}"));
-    }
-
-    let free: Vec<Ipv4Addr> = hosts
-        .iter()
-        .copied()
-        .filter(|h| !used.contains_key(h))
-        .collect();
-    msg::ok(tx, format!("FREE: {} of {}", free.len(), hosts.len()));
-    let candidates: Vec<_> = free
-        .iter()
-        .filter(|h| u32::from(**h) > u32::from(net.network()) + 10)
-        .copied()
-        .collect();
-    let recommended = if candidates.is_empty() {
-        &free
-    } else {
-        &candidates
-    };
-    for ip in recommended.iter().take(5) {
-        msg::ok(tx, format!("  recommended {ip}"));
     }
 }
 
@@ -690,6 +666,7 @@ mod tests {
             interface_index: 1,
             description: description.to_string(),
             ip_addresses: ips.iter().map(|s| (*s).to_string()).collect(),
+            ip_subnets: Vec::new(),
             gateways: Vec::new(),
             dns_servers: dns.iter().map(|s| (*s).to_string()).collect(),
             dhcp_enabled,
@@ -702,6 +679,25 @@ mod tests {
             interface_index: 1,
             description: description.to_string(),
             ip_addresses: ips.iter().map(|s| (*s).to_string()).collect(),
+            ip_subnets: Vec::new(),
+            gateways: gateways.iter().map(|s| (*s).to_string()).collect(),
+            dns_servers: Vec::new(),
+            dhcp_enabled: true,
+        }
+    }
+
+    fn adapter_with_subnet(
+        description: &str,
+        ips: &[&str],
+        subnets: &[&str],
+        gateways: &[&str],
+    ) -> AdapterInfo {
+        AdapterInfo {
+            index: 1,
+            interface_index: 1,
+            description: description.to_string(),
+            ip_addresses: ips.iter().map(|s| (*s).to_string()).collect(),
+            ip_subnets: subnets.iter().map(|s| (*s).to_string()).collect(),
             gateways: gateways.iter().map(|s| (*s).to_string()).collect(),
             dns_servers: Vec::new(),
             dhcp_enabled: true,
@@ -801,5 +797,35 @@ mod tests {
             adapter_with_gateways("Empty", &[], &[]),
         ];
         assert_eq!(preferred_adapter(&adapters), 0);
+    }
+
+    #[test]
+    fn primary_cidr_combines_address_and_subnet() {
+        let ad = adapter_with_subnet(
+            "Ethernet",
+            &["172.16.0.200"],
+            &["255.255.255.0"],
+            &["172.16.0.1"],
+        );
+        assert_eq!(ad.primary_cidr().unwrap().to_string(), "172.16.0.0/24");
+    }
+
+    #[test]
+    fn primary_cidr_ignores_apipa() {
+        let ad = adapter_with_subnet("Broken", &["169.254.10.1"], &["255.255.0.0"], &[]);
+        assert!(ad.primary_cidr().is_none());
+    }
+
+    #[test]
+    fn subnet_for_matches_the_address() {
+        let ad = adapter_with_subnet(
+            "Ethernet",
+            &["10.0.0.5", "192.168.1.9"],
+            &["255.0.0.0", "255.255.255.0"],
+            &[],
+        );
+        assert_eq!(ad.subnet_for("10.0.0.5"), Some("255.0.0.0"));
+        assert_eq!(ad.subnet_for("192.168.1.9"), Some("255.255.255.0"));
+        assert_eq!(ad.subnet_for("8.8.8.8"), None);
     }
 }
