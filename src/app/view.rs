@@ -25,94 +25,122 @@ impl eframe::App for DnsApp {
             ctx.request_repaint_after(Duration::from_millis(120));
         }
 
+        // The header shares the sidebar's fill so the two read as one piece of
+        // window chrome, and the panel's own separator line divides it from the
+        // page content below.
+        let chrome = theme::sidebar_fill(self.dark);
         egui::Panel::top("title")
-            .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(12, 8)))
+            .frame(
+                egui::Frame::new()
+                    .fill(chrome)
+                    .inner_margin(egui::Margin::symmetric(12, 8)),
+            )
             .show(ui, |ui| {
-                ui.add_space(2.0);
+                let row_gap = ui.spacing().item_spacing.y;
 
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("Network support")
-                            .color(theme::text(self.dark))
-                            .size(22.0)
-                            .strong(),
-                    );
-                    ui.add_space(10.0);
-                    let label = if self.busy { "Working…" } else { "Ready" };
-                    let color = if self.busy {
-                        theme::warning(self.dark)
-                    } else {
-                        theme::success(self.dark)
-                    };
-                    ui.label(egui::RichText::new(label).color(color));
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let mode = if self.dark { "Light mode" } else { "Dark mode" };
-                        if ui.button(mode).on_hover_text("Switch appearance").clicked() {
-                            self.dark = !self.dark;
-                            self.theme_dirty = true;
-                            ui.ctx().request_repaint();
-                        }
-
-                        ui.add_space(6.0);
-                        let activity_label = if self.activity_visible {
+                // Row 1: identity on the left, appearance controls on the right.
+                // `shrink_left` keeps the buttons intact and narrows the title
+                // instead, so the two can never collide at the minimum width.
+                let mut toggle_theme = false;
+                let mut toggle_activity = false;
+                egui::Sides::new().shrink_left().truncate().show(
+                    ui,
+                    |ui| {
+                        ui.label(
+                            egui::RichText::new("Network support")
+                                .color(theme::text(self.dark))
+                                .size(22.0)
+                                .strong(),
+                        );
+                        ui.add_space(8.0);
+                        let (label, color) = if self.busy {
+                            ("Working…", theme::warning(self.dark))
+                        } else {
+                            ("Ready", theme::success(self.dark))
+                        };
+                        ui.label(egui::RichText::new(label).color(color));
+                    },
+                    |ui| {
+                        let activity = if self.activity_visible {
                             "Hide activity"
                         } else {
                             "Show activity"
                         };
-                        if ui.button(activity_label).clicked() {
-                            self.activity_visible = !self.activity_visible;
+                        if ui.button(activity).clicked() {
+                            toggle_activity = true;
                         }
-                    });
-                });
+                        ui.add_space(6.0);
+                        let mode = if self.dark { "Light mode" } else { "Dark mode" };
+                        if ui.button(mode).on_hover_text("Switch appearance").clicked() {
+                            toggle_theme = true;
+                        }
+                    },
+                );
+                if toggle_theme {
+                    self.dark = !self.dark;
+                    self.theme_dirty = true;
+                    ctx.request_repaint();
+                }
+                if toggle_activity {
+                    self.activity_visible = !self.activity_visible;
+                }
 
-                ui.add_space(2.0);
+                ui.add_space(row_gap);
 
-                // The credit gets its own row so it can never collide with the
-                // title or the buttons when the window is near its minimum width.
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.hyperlink_to(
-                        egui::RichText::new("github.com/khalid0v").color(theme::accent(self.dark)),
-                        "https://github.com/khalid0v",
-                    );
-                    ui.label(
-                        egui::RichText::new("dev by ahmed khalid | ")
-                            .color(theme::secondary_text(self.dark)),
-                    );
-                });
-
-                ui.add_space(4.0);
-
-                ui.horizontal(|ui| {
-                    ui.label("Network adapter");
-                    let current = self
-                        .adapters
-                        .get(self.selected)
-                        .map(AdapterInfo::title)
-                        .unwrap_or_else(|| "No adapter found".to_string());
-                    let mut chosen = self.selected;
-                    let combo_width = (ui.available_width() - 160.0).max(150.0);
-                    egui::ComboBox::from_id_salt("adapter")
-                        .selected_text(current)
-                        .width(combo_width)
-                        .show_ui(ui, |ui| {
-                            for (i, adapter) in self.adapters.iter().enumerate() {
-                                ui.selectable_value(&mut chosen, i, adapter.title());
-                            }
-                        });
-                    if chosen != self.selected {
-                        self.selected = chosen;
-                        self.sync_scan_range();
-                    }
-                    if ui
-                        .add_enabled(!self.busy, egui::Button::new("Refresh status"))
-                        .clicked()
-                    {
-                        self.refresh_status();
-                    }
-                });
-
-                ui.add_space(2.0);
+                // Row 2: the adapter picker fills the left; the refresh action and
+                // the credit share the right. `shrink_left` keeps the credit and
+                // button at full size and only narrows the picker, so the bar
+                // stays overlap-free down to the minimum window width.
+                let mut chosen = self.selected;
+                let mut refresh = false;
+                egui::Sides::new().shrink_left().truncate().show(
+                    ui,
+                    |ui| {
+                        ui.label("Network adapter");
+                        let current = self
+                            .adapters
+                            .get(self.selected)
+                            .map(AdapterInfo::title)
+                            .unwrap_or_else(|| "No adapter found".to_string());
+                        egui::ComboBox::from_id_salt("adapter")
+                            .selected_text(current)
+                            .width(ui.available_width())
+                            .show_ui(ui, |ui| {
+                                for (i, adapter) in self.adapters.iter().enumerate() {
+                                    ui.selectable_value(&mut chosen, i, adapter.title());
+                                }
+                            });
+                    },
+                    |ui| {
+                        // Added right-to-left: credit at the far edge, then the
+                        // refresh action tucked just inside it.
+                        ui.hyperlink_to(
+                            egui::RichText::new("github.com/khalid0v")
+                                .size(13.0)
+                                .color(theme::accent(self.dark)),
+                            "https://github.com/khalid0v",
+                        );
+                        ui.label(
+                            egui::RichText::new("dev by ahmed khalid |")
+                                .size(13.0)
+                                .color(theme::secondary_text(self.dark)),
+                        );
+                        ui.add_space(16.0);
+                        if ui
+                            .add_enabled(!self.busy, egui::Button::new("Refresh status"))
+                            .clicked()
+                        {
+                            refresh = true;
+                        }
+                    },
+                );
+                if refresh {
+                    self.refresh_status();
+                }
+                if chosen != self.selected {
+                    self.selected = chosen;
+                    self.sync_scan_range();
+                }
             });
 
         if self.activity_visible {
