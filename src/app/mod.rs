@@ -817,6 +817,12 @@ mod tests {
     }
 
     #[test]
+    fn primary_cidr_falls_back_to_24_without_a_mask() {
+        let ad = adapter_with_subnet("Ethernet", &["10.5.5.42"], &[], &["10.5.5.1"]);
+        assert_eq!(ad.primary_cidr().unwrap().to_string(), "10.5.5.0/24");
+    }
+
+    #[test]
     fn subnet_for_matches_the_address() {
         let ad = adapter_with_subnet(
             "Ethernet",

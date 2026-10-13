@@ -47,19 +47,6 @@ impl eframe::App for DnsApp {
                     ui.label(egui::RichText::new(label).color(color));
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("dev by ahmed khalid | ")
-                                    .color(theme::secondary_text(self.dark)),
-                            );
-                            ui.hyperlink_to(
-                                egui::RichText::new("github.com/khalid0v")
-                                    .color(theme::accent(self.dark)),
-                                "https://github.com/khalid0v",
-                            );
-                        });
-                        ui.add_space(12.0);
-
                         let mode = if self.dark { "Light mode" } else { "Dark mode" };
                         if ui.button(mode).on_hover_text("Switch appearance").clicked() {
                             self.dark = !self.dark;
@@ -77,6 +64,21 @@ impl eframe::App for DnsApp {
                             self.activity_visible = !self.activity_visible;
                         }
                     });
+                });
+
+                ui.add_space(2.0);
+
+                // The credit gets its own row so it can never collide with the
+                // title or the buttons when the window is near its minimum width.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.hyperlink_to(
+                        egui::RichText::new("github.com/khalid0v").color(theme::accent(self.dark)),
+                        "https://github.com/khalid0v",
+                    );
+                    ui.label(
+                        egui::RichText::new("dev by ahmed khalid | ")
+                            .color(theme::secondary_text(self.dark)),
+                    );
                 });
 
                 ui.add_space(4.0);
@@ -98,8 +100,10 @@ impl eframe::App for DnsApp {
                                 ui.selectable_value(&mut chosen, i, adapter.title());
                             }
                         });
-                    self.selected = chosen;
-                    self.sync_scan_range();
+                    if chosen != self.selected {
+                        self.selected = chosen;
+                        self.sync_scan_range();
+                    }
                     if ui
                         .add_enabled(!self.busy, egui::Button::new("Refresh status"))
                         .clicked()

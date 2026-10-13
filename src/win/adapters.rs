@@ -46,23 +46,38 @@ impl AdapterInfo {
     }
 
     /// CIDR of the primary (non-APIPA) address, e.g. `172.16.0.0/24`.
+    ///
+    /// Uses the configured subnet mask when WMI reports one; otherwise assumes
+    /// a /24 on the address's own network. The fallback still derives the range
+    /// from the real address, so it never points at an unrelated network the
+    /// way a fixed default would.
     pub fn primary_cidr(&self) -> Option<Ipv4Net> {
         let ip = self.primary_ip()?;
-        let prefix = crate::win::ip::parse_mask(self.subnet_for(ip)?)?;
-        let ip: Ipv4Addr = ip.parse().ok()?;
-        let bits = u32::from(ip);
-        let network = if prefix == 0 {
-            0
-        } else {
-            bits & (u32::MAX << (32 - prefix))
-        };
-        Ipv4Net::new(Ipv4Addr::from(network), prefix).ok()
+        let prefix = self
+            .subnet_for(ip)
+            .and_then(crate::win::ip::parse_mask)
+            .unwrap_or(24);
+        ipnet_of(ip.parse().ok()?, prefix)
     }
 
     /// WMI object path used to invoke instance methods on this adapter.
     pub fn wmi_path(&self) -> String {
         format!("Win32_NetworkAdapterConfiguration.Index={}", self.index)
     }
+}
+
+/// The network that contains `ip` at `prefix`, with the host bits masked off.
+fn ipnet_of(ip: Ipv4Addr, prefix: u8) -> Option<Ipv4Net> {
+    if prefix > 32 {
+        return None;
+    }
+    let bits = u32::from(ip);
+    let network = if prefix == 0 {
+        0
+    } else {
+        bits & (u32::MAX << (32 - prefix))
+    };
+    Ipv4Net::new(Ipv4Addr::from(network), prefix).ok()
 }
 
 #[allow(non_snake_case)]
