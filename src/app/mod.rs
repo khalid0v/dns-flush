@@ -55,6 +55,10 @@ pub struct DnsApp {
 
     scan_cidr: String,
     scan_result: Option<ScanResult>,
+    /// WMI index of the adapter `scan_cidr` was derived from. Lets
+    /// [`Self::sync_scan_range`] tell a real adapter change apart from a
+    /// routine refresh of the same adapter.
+    scan_adapter: Option<u32>,
 
     primary_net: String,
     alt_net: String,
@@ -106,6 +110,7 @@ impl DnsApp {
             alt_ip: String::new(),
             scan_cidr: "192.168.1.0/24".to_string(),
             scan_result: None,
+            scan_adapter: None,
             primary_net: "192.168.1".to_string(),
             alt_net: "172.16.0".to_string(),
             first_host: 11,
@@ -199,6 +204,7 @@ impl DnsApp {
         self.adapters = list;
         let keep = self.adapters.iter().position(|a| a.index == previous);
         self.selected = keep.unwrap_or_else(|| preferred_adapter(&self.adapters));
+        self.sync_scan_range();
     }
 
     /// Apply a live monitor snapshot, logging and surfacing any changes. The
@@ -494,11 +500,16 @@ impl DnsApp {
     }
 
     /// Point the scan range at the selected adapter's own subnet and drop any
-    /// stale result from a previous network.
+    /// stale result from a previous network. Runs only when the selection
+    /// moved to a different adapter, so a hand-typed range and a finished scan
+    /// survive routine refreshes of the same adapter.
     fn sync_scan_range(&mut self) {
-        if let Some(ad) = self.adapter()
-            && let Some(cidr) = ad.primary_cidr()
-        {
+        let current = self.adapter().map(|adapter| adapter.index);
+        if current == self.scan_adapter {
+            return;
+        }
+        self.scan_adapter = current;
+        if let Some(cidr) = self.adapter().and_then(|adapter| adapter.primary_cidr()) {
             self.scan_cidr = cidr.to_string();
         }
         self.scan_result = None;

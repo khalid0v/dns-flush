@@ -595,6 +595,51 @@ impl DnsApp {
             ui.add_space(4.0);
         }
 
+        // Recommended range, derived from the selected adapter's own address
+        // and mask, so the scan targets the network this PC is actually on.
+        let recommendation = self.adapter().and_then(|ad| {
+            let cidr = ad.primary_cidr().map(|net| net.to_string())?;
+            let ip = ad
+                .primary_ip()
+                .cloned()
+                .unwrap_or_else(|| "no IP".to_string());
+            let mask = ad
+                .subnet_for(&ip)
+                .map(str::to_string)
+                .unwrap_or_else(|| "auto /24".to_string());
+            Some((cidr, ip, mask))
+        });
+        match &recommendation {
+            Some((cidr, ip, mask)) => {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Recommended: {cidr}  (from this PC {ip} / {mask})"
+                        ))
+                        .color(theme::secondary_text(self.dark)),
+                    );
+                    if self.scan_cidr != *cidr
+                        && ui
+                            .add_enabled(!self.busy, egui::Button::new("Use recommended"))
+                            .clicked()
+                    {
+                        self.scan_cidr = cidr.clone();
+                        self.scan_result = None;
+                    }
+                });
+                ui.add_space(4.0);
+            }
+            None => {
+                ui.label(
+                    egui::RichText::new(
+                        "The selected adapter has no usable address, so no range can be recommended.",
+                    )
+                    .color(theme::warning(self.dark)),
+                );
+                ui.add_space(4.0);
+            }
+        }
+
         ui.horizontal(|ui| {
             ui.label("Network range");
             ui.text_edit_singleline(&mut self.scan_cidr);
@@ -630,49 +675,68 @@ impl DnsApp {
         self.scan_table(ui, result);
     }
 
-    /// Scrollable table of every host: devices in use first, then free addresses.
+    /// Bordered, striped grid of every host: devices in use first, then free
+    /// addresses. Empty cells render as an em dash so the columns stay readable.
     fn scan_table(&self, ui: &mut egui::Ui, result: &ScanResult) {
+        let empty = "—".to_string();
         let mut rows: Vec<(String, String, String, bool)> = Vec::new();
         for device in &result.used {
+            let detail = format!("{} {}", device.mac, device.note);
+            let detail = detail.trim();
             rows.push((
                 device.ip.to_string(),
                 "In use".to_string(),
-                format!("{} {}", device.mac, device.note).trim().to_string(),
+                if detail.is_empty() {
+                    empty.clone()
+                } else {
+                    detail.to_string()
+                },
                 false,
             ));
         }
         for ip in &result.free {
-            rows.push((ip.to_string(), "Free".to_string(), String::new(), true));
+            rows.push((ip.to_string(), "Free".to_string(), empty.clone(), true));
         }
 
-        egui::ScrollArea::vertical()
-            .max_height(240.0)
-            .auto_shrink([false, false])
+        egui::Frame::new()
+            .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+            .corner_radius(egui::CornerRadius::same(6))
+            .inner_margin(egui::Margin::symmetric(10, 6))
             .show(ui, |ui| {
-                egui::Grid::new("scan_table")
-                    .num_columns(3)
-                    .spacing(egui::vec2(10.0, 4.0))
+                egui::ScrollArea::vertical()
+                    .max_height(240.0)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for title in ["IP address", "Status", "MAC / note"] {
-                            ui.label(
-                                egui::RichText::new(title)
-                                    .color(theme::text(self.dark))
-                                    .strong(),
-                            );
-                        }
-                        ui.end_row();
+                        egui::Grid::new("scan_table")
+                            .num_columns(3)
+                            .spacing(egui::vec2(12.0, 5.0))
+                            .striped(true)
+                            .min_col_width(120.0)
+                            .show(ui, |ui| {
+                                for title in ["IP address", "Status", "MAC / note"] {
+                                    ui.label(
+                                        egui::RichText::new(title)
+                                            .color(theme::text(self.dark))
+                                            .strong(),
+                                    );
+                                }
+                                ui.end_row();
 
-                        for (ip, status, detail, is_free) in &rows {
-                            ui.label(ip);
-                            let color = if *is_free {
-                                theme::success(self.dark)
-                            } else {
-                                theme::warning(self.dark)
-                            };
-                            ui.label(egui::RichText::new(status).color(color).strong());
-                            ui.label(detail);
-                            ui.end_row();
-                        }
+                                for (ip, status, detail, is_free) in &rows {
+                                    ui.label(egui::RichText::new(ip).monospace());
+                                    let color = if *is_free {
+                                        theme::success(self.dark)
+                                    } else {
+                                        theme::warning(self.dark)
+                                    };
+                                    ui.label(egui::RichText::new(status).color(color).strong());
+                                    ui.label(
+                                        egui::RichText::new(detail)
+                                            .color(theme::secondary_text(self.dark)),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
                     });
             });
     }
