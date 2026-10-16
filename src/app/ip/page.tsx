@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { ConfirmAction } from "@/components/app/ConfirmAction";
-import { PageHeader } from "@/components/app/PageHeader";
+import { ConfirmAction } from "@/app/_components/ConfirmAction";
+import { PageHeader } from "@/app/_components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { usePageProps } from "@/hooks/usePageProps";
 import { currentIpLabel, isIpv4, parseMask } from "@/lib/adapters";
 import { api } from "@/lib/api";
-import type { PageProps } from "@/lib/types";
 
-export function IpPage({ selected, busy, runAction, pushLog }: PageProps) {
+export default function IpPage() {
+  const { selected, busy, runAction, pushLog } = usePageProps();
   const [useStatic, setUseStatic] = useState(true);
   const [address, setAddress] = useState("");
   const [mask, setMask] = useState("255.255.255.0");
@@ -115,7 +116,7 @@ export function IpPage({ selected, busy, runAction, pushLog }: PageProps) {
         </ConfirmAction>
       ) : (
         <div>
-          <div className="mb-4 grid max-w-md gap-3">
+          <div className="mb-4 grid w-full max-w-md gap-3">
             {field("ip-address", "IP address", address, setAddress, "192.168.1.20")}
             {field("ip-mask", "Subnet mask or prefix", mask, setMask, "255.255.255.0 or 24")}
             {field("ip-gateway", "Gateway (optional)", gateway, setGateway, "192.168.1.1")}

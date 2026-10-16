@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { ConfirmAction } from "@/components/app/ConfirmAction";
-import { PageHeader } from "@/components/app/PageHeader";
+import { ConfirmAction } from "@/app/_components/ConfirmAction";
+import { PageHeader } from "@/app/_components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { usePageProps } from "@/hooks/usePageProps";
 import { api } from "@/lib/api";
-import type { PageProps } from "@/lib/types";
 
-export function AutoPage({ selected, busy, runAction }: PageProps) {
+export default function AutoPage() {
+  const { selected, busy, runAction } = usePageProps();
   const [primaryNet, setPrimaryNet] = useState("192.168.1");
   const [altNet, setAltNet] = useState("172.16.0");
   const [firstHost, setFirstHost] = useState("11");
@@ -32,7 +33,7 @@ export function AutoPage({ selected, busy, runAction }: PageProps) {
         title="Automatic network setup"
         sub="Find an available address and configure this adapter for that network."
       />
-      <div className="mb-4 grid max-w-md gap-3">
+      <div className="mb-4 grid w-full max-w-md gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="auto-primary">Primary network (first three octets)</Label>
           <Input
@@ -53,7 +54,7 @@ export function AutoPage({ selected, busy, runAction }: PageProps) {
             placeholder="172.16.0"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="auto-first">First host to try</Label>
             <Input

@@ -1,9 +1,11 @@
-import { ConfirmAction } from "@/components/app/ConfirmAction";
-import { PageHeader } from "@/components/app/PageHeader";
+import { ConfirmAction } from "@/app/_components/ConfirmAction";
+import { PageHeader } from "@/app/_components/PageHeader";
+import { usePageProps } from "@/hooks/usePageProps";
 import { api } from "@/lib/api";
-import type { PageProps } from "@/lib/types";
 
-export function ResetPage({ busy, runAction }: PageProps) {
+export default function ResetPage() {
+  const { busy, runAction } = usePageProps();
+
   return (
     <div>
       <PageHeader

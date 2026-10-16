@@ -3,11 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LogKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-export interface ActivityLine {
-  kind: LogKind;
-  text: string;
-}
+import { useAppStore } from "@/store/appStore";
 
 const KIND_CLASS: Record<LogKind, string> = {
   head: "font-semibold text-primary",
@@ -18,28 +14,29 @@ const KIND_CLASS: Record<LogKind, string> = {
 };
 
 interface ActivityPanelProps {
-  lines: ActivityLine[];
-  onClear: () => void;
   onHide: () => void;
 }
 
-export function ActivityPanel({ lines, onClear, onHide }: ActivityPanelProps) {
+export function ActivityPanel({ onHide }: ActivityPanelProps) {
+  const lines = useAppStore((state) => state.lines);
+  const clearLog = useAppStore((state) => state.clearLog);
+
   return (
     <section className="border-t bg-sidebar">
-      <div className="flex items-center gap-2 px-4 pt-2">
+      <div className="flex items-center gap-2 px-3 pt-2 sm:px-4">
         <p className="text-sm font-semibold">Activity</p>
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={onClear}>
+          <Button variant="ghost" size="sm" onClick={clearLog}>
             <Trash2 className="size-4" />
-            Clear activity
+            <span className="hidden sm:inline">Clear activity</span>
           </Button>
           <Button variant="ghost" size="sm" onClick={onHide}>
             <X className="size-4" />
-            Hide
+            <span className="hidden sm:inline">Hide</span>
           </Button>
         </div>
       </div>
-      <ScrollArea className="h-32 px-4 pb-3">
+      <ScrollArea className="h-24 px-3 pb-3 sm:h-32 sm:px-4">
         <div className="flex flex-col gap-0.5 font-mono text-xs">
           {lines.length === 0 ? (
             <p className="text-muted-foreground">No activity yet.</p>

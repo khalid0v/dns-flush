@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { ConfirmAction } from "@/components/app/ConfirmAction";
-import { PageHeader } from "@/components/app/PageHeader";
+import { ConfirmAction } from "@/app/_components/ConfirmAction";
+import { PageHeader } from "@/app/_components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { usePageProps } from "@/hooks/usePageProps";
 import { currentDnsLabel, isIpv4 } from "@/lib/adapters";
 import { api } from "@/lib/api";
-import type { PageProps } from "@/lib/types";
 
 const PRESETS: { name: string; servers: string[] }[] = [
   { name: "Google", servers: ["8.8.8.8", "8.8.4.4"] },
@@ -16,7 +16,8 @@ const PRESETS: { name: string; servers: string[] }[] = [
   { name: "Quad9", servers: ["9.9.9.9", "149.112.112.112"] },
 ];
 
-export function DnsPage({ selected, busy, runAction, pushLog }: PageProps) {
+export default function DnsPage() {
+  const { selected, busy, runAction, pushLog } = usePageProps();
   const [manual, setManual] = useState(false);
   const [dns1, setDns1] = useState("");
   const [dns2, setDns2] = useState("");
@@ -58,7 +59,7 @@ export function DnsPage({ selected, busy, runAction, pushLog }: PageProps) {
       </p>
 
       <p className="mb-2 text-sm font-medium">Presets</p>
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {PRESETS.map((preset) => (
           <Button
             key={preset.name}
@@ -81,7 +82,7 @@ export function DnsPage({ selected, busy, runAction, pushLog }: PageProps) {
       </div>
 
       {manual && (
-        <div className="mb-4 grid max-w-md gap-3">
+        <div className="mb-4 grid w-full max-w-md gap-3">
           <div className="grid gap-1.5">
             <Label htmlFor="dns1">Preferred DNS server</Label>
             <Input

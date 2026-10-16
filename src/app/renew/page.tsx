@@ -1,9 +1,11 @@
-import { ConfirmAction } from "@/components/app/ConfirmAction";
-import { PageHeader } from "@/components/app/PageHeader";
+import { ConfirmAction } from "@/app/_components/ConfirmAction";
+import { PageHeader } from "@/app/_components/PageHeader";
+import { usePageProps } from "@/hooks/usePageProps";
 import { api } from "@/lib/api";
-import type { PageProps } from "@/lib/types";
 
-export function RenewPage({ selected, busy, runAction }: PageProps) {
+export default function RenewPage() {
+  const { selected, busy, runAction } = usePageProps();
+
   if (!selected) {
     return (
       <div>

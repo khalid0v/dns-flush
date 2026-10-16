@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { PageHeader } from "@/components/app/PageHeader";
+import { useState } from "react";
+import { PageHeader } from "@/app/_components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,11 +13,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { usePageProps } from "@/hooks/usePageProps";
 import { primaryCidr, primaryIp, subnetFor } from "@/lib/adapters";
 import { api } from "@/lib/api";
-import type { PageProps, ScanResult } from "@/lib/types";
+import type { ScanResult } from "@/lib/types";
 
-export function ScanPage({ selected, busy, runAction, pushLog }: PageProps) {
+export default function ScanPage() {
+  const { selected, busy, runAction, pushLog } = usePageProps();
   const [cidr, setCidr] = useState("");
   // WMI index the range box was derived from. Mirrors the backend guard: a
   // new range is only suggested when the selection moves to another adapter,
@@ -31,13 +33,15 @@ export function ScanPage({ selected, busy, runAction, pushLog }: PageProps) {
   const thisMask =
     selected && thisIp ? (subnetFor(selected, thisIp) ?? "auto /24") : "unknown";
 
-  useEffect(() => {
-    if (index !== cidrFor) {
-      setCidrFor(index);
-      setResult(null);
-      if (recommendation) setCidr(recommendation);
-    }
-  }, [index, cidrFor, recommendation]);
+  // Adjust derived state during render (React's recommended pattern) so a new
+  // adapter resets the range box without an effect: a fresh range is only
+  // suggested when the selection moves to another adapter, so hand-typed
+  // ranges and finished scans survive refreshes.
+  if (index !== cidrFor) {
+    setCidrFor(index);
+    setResult(null);
+    if (recommendation) setCidr(recommendation);
+  }
 
   const find = () => {
     if (selected === undefined) {
@@ -51,6 +55,17 @@ export function ScanPage({ selected, busy, runAction, pushLog }: PageProps) {
       setResult(await api.scanNetwork(adapterIndex, range));
     });
   };
+
+  const rows: { ip: string; used: boolean; note: string }[] = result
+    ? [
+        ...result.used.map((device) => ({
+          ip: device.ip,
+          used: true,
+          note: `${device.mac} ${device.note}`.trim(),
+        })),
+        ...result.free.map((ip) => ({ ip, used: false, note: "" })),
+      ]
+    : [];
 
   return (
     <div>
@@ -92,15 +107,17 @@ export function ScanPage({ selected, busy, runAction, pushLog }: PageProps) {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor="scan-range">Network range</Label>
+        <Label htmlFor="scan-range" className="w-full sm:w-auto">
+          Network range
+        </Label>
         <Input
           id="scan-range"
-          className="w-56 font-mono"
+          className="w-full font-mono sm:w-56"
           value={cidr}
           onChange={(e) => setCidr(e.target.value)}
           placeholder="192.168.1.0/24"
         />
-        <Button disabled={busy} onClick={find}>
+        <Button className="w-full sm:w-auto" disabled={busy} onClick={find}>
           Find devices
         </Button>
       </div>
@@ -117,37 +134,49 @@ export function ScanPage({ selected, busy, runAction, pushLog }: PageProps) {
           </p>
           <div className="mt-2 rounded-md border">
             <ScrollArea className="h-60">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>IP address</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>MAC / note</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {result.used.map((device) => (
-                    <TableRow key={device.ip} className="even:bg-muted/50">
-                      <TableCell className="font-mono">{device.ip}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">In use</Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {`${device.mac} ${device.note}`.trim() || "—"}
-                      </TableCell>
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>IP address</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>MAC / note</TableHead>
                     </TableRow>
-                  ))}
-                  {result.free.map((ip) => (
-                    <TableRow key={ip} className="even:bg-muted/50">
-                      <TableCell className="font-mono">{ip}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">Free</Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">—</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow key={row.ip} className="even:bg-muted/50">
+                        <TableCell className="font-mono">{row.ip}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.used ? "secondary" : "outline"}>
+                            {row.used ? "In use" : "Free"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {row.note || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <ul className="divide-y sm:hidden">
+                {rows.map((row) => (
+                  <li key={row.ip} className="px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-sm">{row.ip}</span>
+                      <Badge variant={row.used ? "secondary" : "outline"}>
+                        {row.used ? "In use" : "Free"}
+                      </Badge>
+                    </div>
+                    {row.note && (
+                      <p className="mt-0.5 text-xs break-all text-muted-foreground">
+                        {row.note}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </ScrollArea>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
