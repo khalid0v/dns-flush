@@ -5,3 +5,7 @@ node_modules
 dist
 *.local
 /src-tauri/target
+.cargo
+.opencode
+AGENTS.md
+skills-lock.json
