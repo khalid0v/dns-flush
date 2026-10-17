@@ -9,6 +9,9 @@ edition = "2024"
 # `export ordinal too large` because Tauri's DLL export list exceeds the PE
 # limit (see AGENTS.md). The Windows binary links the rlib directly.
 
+[lib]
+name = "trubo_lib"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
