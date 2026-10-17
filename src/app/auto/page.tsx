@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { usePageProps } from "@/hooks/usePageProps";
-import { api } from "@/lib/api";
+import { api } from "@/services/api";
 
 export default function AutoPage() {
   const { selected, busy, runAction } = usePageProps();

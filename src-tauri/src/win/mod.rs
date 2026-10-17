@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod dns;
+pub mod elevate;
 pub mod ip;
 pub mod net;
 pub mod public_ip;

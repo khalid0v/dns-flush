@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { usePageProps } from "@/hooks/usePageProps";
-import { currentDnsLabel, isIpv4 } from "@/lib/adapters";
-import { api } from "@/lib/api";
+import { currentDnsLabel, isIpv4 } from "@/features/adapters";
+import { api } from "@/services/api";
 
 const PRESETS: { name: string; servers: string[] }[] = [
   { name: "Google", servers: ["8.8.8.8", "8.8.4.4"] },

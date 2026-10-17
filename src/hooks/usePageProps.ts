@@ -1,5 +1,5 @@
 import { useAppStore } from "@/store/appStore";
-import type { PageProps } from "@/lib/types";
+import type { PageProps } from "@/types";
 
 /**
  * Derives the props every tool page needs from the global store, so pages

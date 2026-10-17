@@ -3,7 +3,7 @@
  * `win/ip.rs`, `monitor.rs`) so the UI can derive display values without a
  * backend round-trip. No I/O here.
  */
-import type { AdapterInfo } from "./types";
+import type { AdapterInfo } from "@/types";
 
 const APIPA_PREFIX = "169.254.";
 

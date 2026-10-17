@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import { preferredAdapter } from "@/lib/adapters";
-import { api } from "@/lib/api";
-import type { AdapterInfo, LogKind, LogLine, PublicIpPayload } from "@/lib/types";
+import { preferredAdapter } from "@/features/adapters";
+import { api } from "@/services/api";
+import type { AdapterInfo, LogKind, LogLine, PublicIpPayload } from "@/types";
 
 const MAX_LINES = 500;
 

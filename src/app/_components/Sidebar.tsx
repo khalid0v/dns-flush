@@ -14,8 +14,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import type { PageKey } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type { PageKey } from "@/types";
+import { cn } from "@/components/utils";
 
 interface NavItem {
   key: PageKey;

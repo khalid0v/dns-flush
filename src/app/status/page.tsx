@@ -7,8 +7,8 @@ import {
   currentDnsLabel,
   currentIpLabel,
   vpnStatusLabel,
-} from "@/lib/adapters";
-import { api } from "@/lib/api";
+} from "@/features/adapters";
+import { api } from "@/services/api";
 import { useAppStore } from "@/store/appStore";
 
 function FactCard({ title, value, note }: { title: string; value: string; note: string }) {

@@ -1,8 +1,8 @@
 import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { LogKind } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type { LogKind } from "@/types";
+import { cn } from "@/components/utils";
 import { useAppStore } from "@/store/appStore";
 
 const KIND_CLASS: Record<LogKind, string> = {

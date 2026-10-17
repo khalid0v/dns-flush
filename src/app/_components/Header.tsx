@@ -8,8 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { adapterTitle } from "@/lib/adapters";
-import { cn } from "@/lib/utils";
+import { adapterTitle } from "@/features/adapters";
+import { cn } from "@/components/utils";
 import { useAppStore } from "@/store/appStore";
 
 interface HeaderProps {

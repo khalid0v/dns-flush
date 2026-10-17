@@ -8,7 +8,7 @@ use windows_sys::Win32::NetworkManagement::IpHelper::{GetIpNetTable, MIB_IPNETTA
 
 use super::adapters::AdapterInfo;
 use super::net::{ping, u32_to_ip};
-use crate::msg::{ScanDevice, ScanResult};
+use crate::models::{ScanDevice, ScanResult};
 
 pub fn parse_cidr(text: &str) -> Option<Ipv4Net> {
     let net: Ipv4Net = text.trim().parse().ok()?;

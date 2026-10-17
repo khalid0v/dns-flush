@@ -14,9 +14,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { usePageProps } from "@/hooks/usePageProps";
-import { primaryCidr, primaryIp, subnetFor } from "@/lib/adapters";
-import { api } from "@/lib/api";
-import type { ScanResult } from "@/lib/types";
+import { primaryCidr, primaryIp, subnetFor } from "@/features/adapters";
+import { api } from "@/services/api";
+import type { ScanResult } from "@/types";
 
 export default function ScanPage() {
   const { selected, busy, runAction, pushLog } = usePageProps();

@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { api } from "@/lib/api";
-import type { AdapterInfo, LogLine, PublicIpPayload } from "@/lib/types";
+import { api } from "@/services/api";
+import type { AdapterInfo, LogLine, PublicIpPayload } from "@/types";
 import { useAppStore } from "@/store/appStore";
 
 /**

@@ -1,7 +1,7 @@
 import { ConfirmAction } from "@/app/_components/ConfirmAction";
 import { PageHeader } from "@/app/_components/PageHeader";
 import { usePageProps } from "@/hooks/usePageProps";
-import { api } from "@/lib/api";
+import { api } from "@/services/api";
 
 export default function ResetPage() {
   const { busy, runAction } = usePageProps();

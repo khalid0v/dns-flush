@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { usePageProps } from "@/hooks/usePageProps";
-import { currentIpLabel, isIpv4, parseMask } from "@/lib/adapters";
-import { api } from "@/lib/api";
+import { currentIpLabel, isIpv4, parseMask } from "@/features/adapters";
+import { api } from "@/services/api";
 
 export default function IpPage() {
   const { selected, busy, runAction, pushLog } = usePageProps();

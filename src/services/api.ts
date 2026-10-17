@@ -1,6 +1,6 @@
 /** Typed wrappers around the Tauri backend commands. */
 import { invoke } from "@tauri-apps/api/core";
-import type { AdapterInfo, LogLine, ScanResult } from "./types";
+import type { AdapterInfo, LogLine, ScanResult } from "@/types";
 
 export interface StaticIpArgs {
   index: number;

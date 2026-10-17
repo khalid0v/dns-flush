@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PageHeader } from "@/app/_components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { usePageProps } from "@/hooks/usePageProps";
-import { api } from "@/lib/api";
+import { api } from "@/services/api";
 
 export default function FlushPage() {
   const { busy, runAction } = usePageProps();
